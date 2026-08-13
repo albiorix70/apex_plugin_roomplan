@@ -10,6 +10,8 @@ description: "Use when editing Oracle SQL or PL/SQL files in this Oracle APEX pl
 - Preserve package specs and bodies, object names, and public signatures unless the task explicitly requires an interface change.
 - Prefer clear PL/SQL blocks with explicit exception handling when behavior can fail at runtime.
 - When generating dynamic SQL, use bind variables and avoid string concatenation for user-provided values.
+- When concatenating variables into string literals, use q-quote syntax (`q'[...]'`) instead of quoted literals with escaped quotes.
+- When assembling multiple lines into a single output document (e.g. a CLOB), use `apex_string.join_clob` with an `apex_t_varchar2` array of q-quote (`q'[...]'`) elements instead of chained `||` concatenation.
 - Keep APEX-facing code defensive around session state, page item names, and plugin attribute usage.
 - If a change depends on front-end behavior, check whether the corresponding asset must be synced through [scripts/sync-roomplan-js.ps1](../../scripts/sync-roomplan-js.ps1).
 - Link to existing repository docs instead of duplicating them; start with [README.md](../../README.md).

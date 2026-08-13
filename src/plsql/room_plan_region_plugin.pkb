@@ -5,33 +5,33 @@ create or replace package body room_plan_region_plugin as
   function default_room_data return clob is
   begin
     return apex_string.join_clob(apex_t_varchar2(
-      '{',
-      '"locationId":1,',
-      '"unit":"cm",',
-      '"raumBreite":400,',
-      '"raumLaenge":300,',
-      '"wallPath":null,',
-      '"features":[],',
-      '"desks":[],',
-      '"assets":[],',
-      '"sockets":[]',
-      '}'
+      q'[{]',
+      q'["locationId":1,]',
+      q'["unit":"cm",]',
+      q'["raumBreite":400,]',
+      q'["raumLaenge":300,]',
+      q'["wallPath":null,]',
+      q'["features":[],]',
+      q'["desks":[],]',
+      q'["assets":[],]',
+      q'["sockets":[]]',
+      q'[}]'
     ));
   end default_room_data;
 
   function default_palette return clob is
   begin
     return apex_string.join_clob(apex_t_varchar2(
-      '[',
-      '{"label":"Tisch","template":{"kind":"DESK","deskTyp":"WORKSTATION","label":"Tisch","breite":140,"hoehe":70}},',
-      '{"label":"Monitor","template":{"kind":"ASSET","label":"Monitor","hardwareId":4712,"breite":60,"hoehe":15}},',
-      '{"label":"Dockingstation","template":{"kind":"ASSET","label":"Dockingstation","hardwareId":4713,"breite":20,"hoehe":10}},',
-      '{"label":"PC (Beispiel-Asset)","template":{"kind":"ASSET","label":"PC","hardwareId":4711,"breite":30,"hoehe":20}},',
-      '{"label":"Netzwerkdose","template":{"kind":"SOCKET","socketTyp":"NETZWERK","label":"Dose","breite":0,"hoehe":0}},',
-      '{"label":"Stromdose","template":{"kind":"SOCKET","socketTyp":"STROM","label":"Dose","breite":0,"hoehe":0}},',
-      '{"label":"Tur (nur auf Wand ziehbar, Standardbreite 100cm)","template":{"kind":"FEATURE","featureTyp":"TUER","label":"Tur","breite":100,"hoehe":0}},',
-      '{"label":"Fenster (nur auf Wand ziehbar)","template":{"kind":"FEATURE","featureTyp":"FENSTER","label":"Fenster","breite":100,"hoehe":0}}',
-      ']'
+      q'[[]',
+      q'[{"label":"Tisch","template":{"kind":"DESK","deskTyp":"WORKSTATION","label":"Tisch","breite":140,"hoehe":70}},]',
+      q'[{"label":"Monitor","template":{"kind":"ASSET","label":"Monitor","hardwareId":4712,"breite":60,"hoehe":15}},]',
+      q'[{"label":"Dockingstation","template":{"kind":"ASSET","label":"Dockingstation","hardwareId":4713,"breite":20,"hoehe":10}},]',
+      q'[{"label":"PC (Beispiel-Asset)","template":{"kind":"ASSET","label":"PC","hardwareId":4711,"breite":30,"hoehe":20}},]',
+      q'[{"label":"Netzwerkdose","template":{"kind":"SOCKET","socketTyp":"NETZWERK","label":"Dose","breite":0,"hoehe":0}},]',
+      q'[{"label":"Stromdose","template":{"kind":"SOCKET","socketTyp":"STROM","label":"Dose","breite":0,"hoehe":0}},]',
+      q'[{"label":"Tur (nur auf Wand ziehbar, Standardbreite 100cm)","template":{"kind":"FEATURE","featureTyp":"TUER","label":"Tur","breite":100,"hoehe":0}},]',
+      q'[{"label":"Fenster (nur auf Wand ziehbar)","template":{"kind":"FEATURE","featureTyp":"FENSTER","label":"Fenster","breite":100,"hoehe":0}}]',
+      q'[]]'
     ));
   end default_palette;
 
@@ -61,11 +61,11 @@ create or replace package body room_plan_region_plugin as
     sys.htp.p('</div>');
 
     sys.htp.p('<script type="application/json" id="' || apex_escape.html_attribute(p_data_id) || '">');
-    sys.htp.prn(apex_escape.html(p_data_json));
+    sys.htp.prn(p_data_json);
     sys.htp.p('</script>');
 
     sys.htp.p('<script type="application/json" id="' || apex_escape.html_attribute(p_palette_id) || '">');
-    sys.htp.prn(apex_escape.html(p_palette_json));
+    sys.htp.prn(p_palette_json);
     sys.htp.p('</script>');
 
     sys.htp.p('<style>');
@@ -110,11 +110,6 @@ create or replace package body room_plan_region_plugin as
 
     l_file_prefix := coalesce(p_region.attribute_03, p_plugin.file_prefix);
 
-    apex_javascript.add_library(
-      p_name      => 'room-plan-plugin.min',
-      p_directory => l_file_prefix || 'js/'
-    );
-
     print_markup(
       p_container_id => l_container_id,
       p_canvas_id    => l_canvas_id,
@@ -125,56 +120,56 @@ create or replace package body room_plan_region_plugin as
     );
 
     l_onload_js := apex_string.join_clob(apex_t_varchar2(
-      '(function () {',
-      '  var root = document.getElementById(', apex_escape.js_literal(l_container_id), ');',
-      '  var canvas = document.getElementById(', apex_escape.js_literal(l_canvas_id), ');',
-      '  var dataNode = document.getElementById(', apex_escape.js_literal(l_data_id), ');',
-      '  var paletteNode = document.getElementById(', apex_escape.js_literal(l_palette_id), ');',
-      '  if (!root || !canvas || !dataNode || !paletteNode) { return; }',
-      '  if (!window.RoomPlan || !RoomPlan.RoomPlanRenderer) {',
-      '    if (window.console) { console.error("RoomPlan bundle nicht geladen"); }',
-      '    return;',
-      '  }',
-      '  var roomData = {};',
-      '  var paletteData = [];',
-      '  try { roomData = JSON.parse(dataNode.textContent || "{}"); } catch (e1) { if (window.console) { console.error(e1); } }',
-      '  try { paletteData = JSON.parse(paletteNode.textContent || "[]"); } catch (e2) { if (window.console) { console.error(e2); } }',
-      '  var renderer = new RoomPlan.RoomPlanRenderer(canvas, roomData, {',
-      '    onValidationWarning: function (warn) {',
-      '      if (window.console) { console.warn(warn.code, warn.message); }',
-      '    }',
-      '  });',
-      '  window[''roomPlanRenderer_'' + ', to_char(p_region.id), '] = renderer;',
-      '  var paletteContainer = root.querySelector(''.rp-palette'');',
-      '  paletteData.forEach(function (item) {',
-      '    var el = document.createElement("div");',
-      '    el.className = "rp-palette-item";',
-      '    el.setAttribute("draggable", "true");',
-      '    el.textContent = item.label || "Element";',
-      '    el.dataset.template = JSON.stringify(item.template || {});',
-      '    el.addEventListener("dragstart", function (evt) {',
-      '      evt.dataTransfer.setData("application/json", el.dataset.template);',
-      '    });',
-      '    paletteContainer.appendChild(el);',
-      '  });',
-      '  var bind = function (action, fn) {',
-      '    var btn = root.querySelector("button[data-action=\"" + action + "\"]");',
-      '    if (btn) { btn.addEventListener("click", fn); }',
-      '  };',
-      '  bind("zoom-in", function () { renderer.zoomIn(); });',
-      '  bind("zoom-out", function () { renderer.zoomOut(); });',
-      '  bind("zoom-reset", function () { renderer.resetZoom(); });',
-      '  bind("view-reset", function () { renderer.resetView(); });',
-      '  bind("fit", function () { renderer.fitToContainer(); });',
-      '  bind("save", function () {',
-      '    var payload = (typeof renderer.getData === "function") ? renderer.getData() : renderer;',
-      '    var pre = root.querySelector(".rp-state-log");',
-      '    if (pre) { pre.textContent = JSON.stringify(payload, null, 2); }',
-      '    if (window.apex && apex.event && typeof apex.event.trigger === "function") {',
-      '      apex.event.trigger(root, "roomplan-save", { data: payload });',
-      '    }',
-      '  });',
-      '})();'
+      q'[(function () {]',
+      q'[  var root = document.getElementById(]', apex_escape.js_literal(l_container_id), q'[);]',
+      q'[  var canvas = document.getElementById(]', apex_escape.js_literal(l_canvas_id), q'[);]',
+      q'[  var dataNode = document.getElementById(]', apex_escape.js_literal(l_data_id), q'[);]',
+      q'[  var paletteNode = document.getElementById(]', apex_escape.js_literal(l_palette_id), q'[);]',
+      q'[  if (!root || !canvas || !dataNode || !paletteNode) { return; }]',
+      q'[  if (!window.RoomPlan || !RoomPlan.RoomPlanRenderer) {]',
+      q'[    if (window.console) { console.error("RoomPlan bundle nicht geladen"); }]',
+      q'[    return;]',
+      q'[  }]',
+      q'[  var roomData = {};]',
+      q'[  var paletteData = [];]',
+      q'[  try { roomData = JSON.parse(dataNode.textContent || "{}"); } catch (e1) { if (window.console) { console.error(e1); } }]',
+      q'[  try { paletteData = JSON.parse(paletteNode.textContent || "[]"); } catch (e2) { if (window.console) { console.error(e2); } }]',
+      q'[  var renderer = new RoomPlan.RoomPlanRenderer(canvas, roomData, {]',
+      q'[    onValidationWarning: function (warn) {]',
+      q'[      if (window.console) { console.warn(warn.code, warn.message); }]',
+      q'[    }]',
+      q'[  });]',
+      q'[  window['roomPlanRenderer_' + ]', to_char(p_region.id), q'[] = renderer;]',
+      q'[  var paletteContainer = root.querySelector('.rp-palette');]',
+      q'[  paletteData.forEach(function (item) {]',
+      q'[    var el = document.createElement("div");]',
+      q'[    el.className = "rp-palette-item";]',
+      q'[    el.setAttribute("draggable", "true");]',
+      q'[    el.textContent = item.label || "Element";]',
+      q'[    el.dataset.template = JSON.stringify(item.template || {});]',
+      q'[    el.addEventListener("dragstart", function (evt) {]',
+      q'[      evt.dataTransfer.setData("application/json", el.dataset.template);]',
+      q'[    });]',
+      q'[    paletteContainer.appendChild(el);]',
+      q'[  });]',
+      q'[  var bind = function (action, fn) {]',
+      q'[    var btn = root.querySelector("button[data-action=\"" + action + "\"]");]',
+      q'[    if (btn) { btn.addEventListener("click", fn); }]',
+      q'[  };]',
+      q'[  bind("zoom-in", function () { renderer.zoomIn(); });]',
+      q'[  bind("zoom-out", function () { renderer.zoomOut(); });]',
+      q'[  bind("zoom-reset", function () { renderer.resetZoom(); });]',
+      q'[  bind("view-reset", function () { renderer.resetView(); });]',
+      q'[  bind("fit", function () { renderer.fitToContainer(); });]',
+      q'[  bind("save", function () {]',
+      q'[    var payload = (typeof renderer.getData === "function") ? renderer.getData() : renderer;]',
+      q'[    var pre = root.querySelector(".rp-state-log");]',
+      q'[    if (pre) { pre.textContent = JSON.stringify(payload, null, 2); }]',
+      q'[    if (window.apex && apex.event && typeof apex.event.trigger === "function") {]',
+      q'[      apex.event.trigger(root, "roomplan-save", { data: payload });]',
+      q'[    }]',
+      q'[  });]',
+      q'[})();]'
     ));
 
     apex_javascript.add_onload_code(p_code => l_onload_js);
