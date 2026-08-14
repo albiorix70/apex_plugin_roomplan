@@ -1,188 +1,216 @@
-prompt -- RoomPlan APEX region plugin render implementation (APEX 19.2)
+pro    -- RoomPlan APEX region plugin render implementation (APEX 19.2)
 
 create or replace package body room_plan_region_plugin as
 
-  function default_room_data return clob is
-  begin
-    return apex_string.join_clob(apex_t_varchar2(
-      q'[{]',
-      q'["locationId":1,]',
-      q'["unit":"cm",]',
-      q'["raumBreite":400,]',
-      q'["raumLaenge":300,]',
-      q'["wallPath":null,]',
-      q'["features":[],]',
-      q'["desks":[],]',
-      q'["assets":[],]',
-      q'["sockets":[]]',
-      q'[}]'
-    ));
-  end default_room_data;
+   function default_room_data return clob is
+   begin
+      return apex_string.join_clob(apex_t_varchar2(
+         q'[{]',
+         q'["locationId":1,]',
+         q'["unit":"cm",]',
+         q'["raumBreite":400,]',
+         q'["raumLaenge":300,]',
+         q'["wallPath":null,]',
+         q'["features":[],]',
+         q'["desks":[],]',
+         q'["assets":[],]',
+         q'["sockets":[]]',
+         q'[}]'
+      ));
+   end default_room_data;
 
-  function default_palette return clob is
-  begin
-    return apex_string.join_clob(apex_t_varchar2(
-      q'[[]',
-      q'[{"label":"Tisch","template":{"kind":"DESK","deskTyp":"WORKSTATION","label":"Tisch","breite":140,"hoehe":70}},]',
-      q'[{"label":"Monitor","template":{"kind":"ASSET","label":"Monitor","hardwareId":4712,"breite":60,"hoehe":15}},]',
-      q'[{"label":"Dockingstation","template":{"kind":"ASSET","label":"Dockingstation","hardwareId":4713,"breite":20,"hoehe":10}},]',
-      q'[{"label":"PC (Beispiel-Asset)","template":{"kind":"ASSET","label":"PC","hardwareId":4711,"breite":30,"hoehe":20}},]',
-      q'[{"label":"Netzwerkdose","template":{"kind":"SOCKET","socketTyp":"NETZWERK","label":"Dose","breite":0,"hoehe":0}},]',
-      q'[{"label":"Stromdose","template":{"kind":"SOCKET","socketTyp":"STROM","label":"Dose","breite":0,"hoehe":0}},]',
-      q'[{"label":"Tur (nur auf Wand ziehbar, Standardbreite 100cm)","template":{"kind":"FEATURE","featureTyp":"TUER","label":"Tur","breite":100,"hoehe":0}},]',
-      q'[{"label":"Fenster (nur auf Wand ziehbar)","template":{"kind":"FEATURE","featureTyp":"FENSTER","label":"Fenster","breite":100,"hoehe":0}}]',
-      q'[]]'
-    ));
-  end default_palette;
+   function default_palette return clob is
+   begin
+      return apex_string.join_clob(apex_t_varchar2(
+         q'[[]',
+         q'[{"label":"Tisch","template":{"kind":"DESK","deskTyp":"WORKSTATION","label":"Tisch","breite":140,"hoehe":70}},]',
+         q'[{"label":"Monitor","template":{"kind":"ASSET","label":"Monitor","hardwareId":4712,"breite":60,"hoehe":15}},]',
+         q'[{"label":"Dockingstation","template":{"kind":"ASSET","label":"Dockingstation","hardwareId":4713,"breite":20,"hoehe":10}},]'
+         ,
+         q'[{"label":"PC (Beispiel-Asset)","template":{"kind":"ASSET","label":"PC","hardwareId":4711,"breite":30,"hoehe":20}},]'
+         ,
+         q'[{"label":"Netzwerkdose","template":{"kind":"SOCKET","socketTyp":"NETZWERK","label":"Dose","breite":0,"hoehe":0}},]'
+         ,
+         q'[{"label":"Stromdose","template":{"kind":"SOCKET","socketTyp":"STROM","label":"Dose","breite":0,"hoehe":0}},]',
+         q'[{"label":"Tur (nur auf Wand ziehbar, Standardbreite 100cm)","template":{"kind":"FEATURE","featureTyp":"TUER","label":"Tur","breite":100,"hoehe":0}},]'
+         ,
+         q'[
+  {
+    "label": "Fenster (nur auf Wand ziehbar)",
+    "template": {
+      "kind": "FEATURE",
+      "featureTyp": "FENSTER",
+      "label": "Fenster",
+      "breite": 100,
+      "hoehe": 0
+    }
+  }
+]'
+         ,
+         q'[]]'
+      ));
+   end default_palette;
 
-  procedure print_markup (
-    p_container_id in varchar2,
-    p_canvas_id    in varchar2,
-    p_data_id      in varchar2,
-    p_palette_id   in varchar2,
-    p_data_json    in clob,
-    p_palette_json in clob
-  ) is
-  begin
-    sys.htp.p('<div id="' || apex_escape.html_attribute(p_container_id) || '" class="rp-wrapper">');
-    sys.htp.p('  <div class="rp-palette" aria-label="RoomPlan Palette"></div>');
-    sys.htp.p('  <div class="rp-editor">');
-    sys.htp.p('    <div id="' || apex_escape.html_attribute(p_canvas_id) || '" class="room-plan"></div>');
-    sys.htp.p('    <div class="rp-zoom-controls">');
-    sys.htp.p('      <button type="button" data-action="zoom-out">-</button>');
-    sys.htp.p('      <button type="button" data-action="zoom-reset">100%</button>');
-    sys.htp.p('      <button type="button" data-action="zoom-in">+</button>');
-    sys.htp.p('      <button type="button" data-action="view-reset">Ansicht zurucksetzen</button>');
-    sys.htp.p('      <button type="button" data-action="fit">An Fenster anpassen</button>');
-    sys.htp.p('      <button type="button" data-action="save">Speichern</button>');
-    sys.htp.p('    </div>');
-    sys.htp.p('    <pre class="rp-state-log"></pre>');
-    sys.htp.p('  </div>');
-    sys.htp.p('</div>');
-
-    sys.htp.p('<script type="application/json" id="' || apex_escape.html_attribute(p_data_id) || '">');
-    sys.htp.prn(p_data_json);
-    sys.htp.p('</script>');
-
-    sys.htp.p('<script type="application/json" id="' || apex_escape.html_attribute(p_palette_id) || '">');
-    sys.htp.prn(p_palette_json);
-    sys.htp.p('</script>');
-
-    sys.htp.p('<style>');
-    sys.htp.p('  #' || apex_escape.html_attribute(p_container_id) || ' { font-family: sans-serif; display: flex; gap: 16px; }');
-    sys.htp.p('  #' || apex_escape.html_attribute(p_container_id) || ' .rp-palette { display: flex; flex-direction: column; gap: 8px; width: 200px; }');
-    sys.htp.p('  #' || apex_escape.html_attribute(p_container_id) || ' .rp-palette-item { border: 1px solid #999; border-radius: 4px; padding: 8px; cursor: grab; background: #fafafa; text-align: center; font-size: 13px; }');
-    sys.htp.p('  #' || apex_escape.html_attribute(p_container_id) || ' .room-plan { border: 1px solid #ccc; width: 900px; height: 650px; overflow: hidden; }');
-    sys.htp.p('  #' || apex_escape.html_attribute(p_container_id) || ' .rp-zoom-controls { margin: 8px 0; display: flex; gap: 8px; flex-wrap: wrap; }');
-    sys.htp.p('  #' || apex_escape.html_attribute(p_container_id) || ' .rp-state-log { max-width: 640px; white-space: pre-wrap; font-size: 12px; margin-top: 8px; }');
-    sys.htp.p('</style>');
-  end print_markup;
-
-  function render_region (
-    p_region              in apex_plugin.t_region,
-    p_plugin              in apex_plugin.t_plugin,
-    p_is_printer_friendly in boolean
-  ) return apex_plugin.t_region_render_result is
-    l_result       apex_plugin.t_region_render_result;
-    l_static_id    varchar2(255);
-    l_container_id varchar2(255);
-    l_canvas_id    varchar2(255);
-    l_data_id      varchar2(255);
-    l_palette_id   varchar2(255);
-    l_room_data    clob;
-    l_palette      clob;
-    l_onload_js    clob;
-    l_file_prefix  varchar2(4000);
-  begin
-    if p_is_printer_friendly then
-      return l_result;
-    end if;
-
-    l_static_id := nvl(p_region.static_id, 'RP_REGION_' || p_region.id);
-
-    l_container_id := l_static_id || '_wrapper';
-    l_canvas_id := l_static_id || '_room_plan';
-    l_data_id := l_static_id || '_room_data';
-    l_palette_id := l_static_id || '_palette_data';
-
-    l_room_data := nvl(p_region.attribute_01, default_room_data);
-    l_palette := nvl(p_region.attribute_02, default_palette);
-
-    l_file_prefix := coalesce(p_region.attribute_03, p_plugin.file_prefix);
-
-    print_markup(
-      p_container_id => l_container_id,
-      p_canvas_id    => l_canvas_id,
-      p_data_id      => l_data_id,
-      p_palette_id   => l_palette_id,
-      p_data_json    => l_room_data,
-      p_palette_json => l_palette
-    );
-
-    l_onload_js := apex_string.join_clob(apex_t_varchar2(
-      q'[(function () {]',
-      q'[  var root = document.getElementById(]', apex_escape.js_literal(l_container_id), q'[);]',
-      q'[  var canvas = document.getElementById(]', apex_escape.js_literal(l_canvas_id), q'[);]',
-      q'[  var dataNode = document.getElementById(]', apex_escape.js_literal(l_data_id), q'[);]',
-      q'[  var paletteNode = document.getElementById(]', apex_escape.js_literal(l_palette_id), q'[);]',
-      q'[  if (!root || !canvas || !dataNode || !paletteNode) { return; }]',
-      q'[  if (!window.RoomPlan || !RoomPlan.RoomPlanRenderer) {]',
-      q'[    if (window.console) { console.error("RoomPlan bundle nicht geladen"); }]',
-      q'[    return;]',
-      q'[  }]',
-      q'[  var roomData = {};]',
-      q'[  var paletteData = [];]',
-      q'[  try { roomData = JSON.parse(dataNode.textContent || "{}"); } catch (e1) { if (window.console) { console.error(e1); } }]',
-      q'[  try { paletteData = JSON.parse(paletteNode.textContent || "[]"); } catch (e2) { if (window.console) { console.error(e2); } }]',
-      q'[  var renderer = new RoomPlan.RoomPlanRenderer(canvas, roomData, {]',
-      q'[    onValidationWarning: function (warn) {]',
-      q'[      if (window.console) { console.warn(warn.code, warn.message); }]',
-      q'[    }]',
-      q'[  });]',
-      q'[  window['roomPlanRenderer_' + ]', to_char(p_region.id), q'[] = renderer;]',
-      q'[  var paletteContainer = root.querySelector('.rp-palette');]',
-      q'[  paletteData.forEach(function (item) {]',
-      q'[    var el = document.createElement("div");]',
-      q'[    el.className = "rp-palette-item";]',
-      q'[    el.setAttribute("draggable", "true");]',
-      q'[    el.textContent = item.label || "Element";]',
-      q'[    el.dataset.template = JSON.stringify(item.template || {});]',
-      q'[    el.addEventListener("dragstart", function (evt) {]',
-      q'[      evt.dataTransfer.setData("application/json", el.dataset.template);]',
-      q'[    });]',
-      q'[    paletteContainer.appendChild(el);]',
-      q'[  });]',
-      q'[  var bind = function (action, fn) {]',
-      q'[    var btn = root.querySelector("button[data-action=\"" + action + "\"]");]',
-      q'[    if (btn) { btn.addEventListener("click", fn); }]',
-      q'[  };]',
-      q'[  bind("zoom-in", function () { renderer.zoomIn(); });]',
-      q'[  bind("zoom-out", function () { renderer.zoomOut(); });]',
-      q'[  bind("zoom-reset", function () { renderer.resetZoom(); });]',
-      q'[  bind("view-reset", function () { renderer.resetView(); });]',
-      q'[  bind("fit", function () { renderer.fitToContainer(); });]',
-      q'[  bind("save", function () {]',
-      q'[    var payload = (typeof renderer.getData === "function") ? renderer.getData() : renderer;]',
-      q'[    var pre = root.querySelector(".rp-state-log");]',
-      q'[    if (pre) { pre.textContent = JSON.stringify(payload, null, 2); }]',
-      q'[    if (window.apex && apex.event && typeof apex.event.trigger === "function") {]',
-      q'[      apex.event.trigger(root, "roomplan-save", { data: payload });]',
-      q'[    }]',
-      q'[  });]',
-      q'[})();]'
-    ));
-
-    apex_javascript.add_onload_code(p_code => l_onload_js);
-
-    return l_result;
-  exception
-    when others then
-      apex_debug.error(
-        p_message => 'room_plan_region_plugin.render_region failed: %s',
-        p0        => sqlerrm
+   function ajax_callback (
+      p_region in apex_plugin.t_region,
+      p_plugin in apex_plugin.t_plugin
+   ) return apex_plugin.t_region_ajax_result is
+      l_result    apex_plugin.t_region_ajax_result;
+      l_room_data clob;
+      l_palette   clob;
+   begin
+      if apex_application.g_debug then
+         apex_plugin_util.debug_region(
+            p_plugin              => p_plugin,
+            p_region              => p_region,
+            p_is_printer_friendly => false
+         );
+      end if;
+      l_room_data := nvl(
+         p_region.attribute_01,
+         default_room_data
       );
-      raise;
-  end render_region;
+      l_palette := nvl(
+         p_region.attribute_02,
+         default_palette
+      );
+      sys.htp.prn(apex_string.join_clob(apex_t_varchar2(
+         q'[{"data":]',
+         l_room_data,
+         q'[,"palette":]',
+         l_palette,
+         q'[}]'
+      )));
+
+      return l_result;
+   exception
+      when others then
+         apex_debug.error(
+            p_message => 'room_plan_region_plugin.ajax_callback failed: %s',
+            p0        => sqlerrm
+         );
+         raise;
+   end ajax_callback;
+
+   procedure print_markup (
+      p_container_id in varchar2,
+      p_canvas_id    in varchar2
+   ) is
+   begin
+      sys.htp.p('<div id="'
+                || apex_escape.html_attribute(p_container_id) || '" class="rp-wrapper">');
+      sys.htp.p('  <div class="rp-palette" aria-label="RoomPlan Palette"></div>');
+      sys.htp.p('  <div class="rp-editor">');
+      sys.htp.p('    <div id="'
+                || apex_escape.html_attribute(p_canvas_id) || '" class="room-plan"></div>');
+      sys.htp.p('    <div class="rp-zoom-controls">');
+      sys.htp.p('      <button type="button" data-action="zoom-out">-</button>');
+      sys.htp.p('      <button type="button" data-action="zoom-reset">100%</button>');
+      sys.htp.p('      <button type="button" data-action="zoom-in">+</button>');
+      sys.htp.p('      <button type="button" data-action="view-reset">Ansicht zurucksetzen</button>');
+      sys.htp.p('      <button type="button" data-action="fit">An Fenster anpassen</button>');
+      sys.htp.p('      <button type="button" data-action="save">Speichern</button>');
+      sys.htp.p('    </div>');
+      sys.htp.p('    <pre class="rp-state-log"></pre>');
+      sys.htp.p('  </div>');
+      sys.htp.p('</div>');
+      sys.htp.p('<style>');
+      sys.htp.p('  #'
+                || apex_escape.html_attribute(p_container_id) || ' { font-family: sans-serif; display: flex; gap: 16px; }');
+      sys.htp.p('  #'
+                || apex_escape.html_attribute(p_container_id) || ' .rp-palette { display: flex; flex-direction: column; gap: 8px; width: 200px; }'
+                );
+      sys.htp.p('  #'
+                || apex_escape.html_attribute(p_container_id) || ' .rp-palette-item { border: 1px solid #999; border-radius: 4px; padding: 8px; cursor: grab; background: #fafafa; text-align: center; font-size: 13px; }'
+                );
+      sys.htp.p('  #'
+                || apex_escape.html_attribute(p_container_id) || ' .room-plan { border: 1px solid #ccc; width: 900px; height: 650px; overflow: hidden; }'
+                );
+      sys.htp.p('  #'
+                || apex_escape.html_attribute(p_container_id) || ' .rp-zoom-controls { margin: 8px 0; display: flex; gap: 8px; flex-wrap: wrap; }'
+                );
+      sys.htp.p('  #'
+                || apex_escape.html_attribute(p_container_id) || ' .rp-state-log { max-width: 640px; white-space: pre-wrap; font-size: 12px; margin-top: 8px; }'
+                );
+      sys.htp.p('</style>');
+   end print_markup;
+
+   function render_region (
+      p_region              in apex_plugin.t_region,
+      p_plugin              in apex_plugin.t_plugin,
+      p_is_printer_friendly in boolean
+   ) return apex_plugin.t_region_render_result is
+      l_result          apex_plugin.t_region_render_result;
+      l_static_id       varchar2(255);
+      l_container_id    varchar2(255);
+      l_canvas_id       varchar2(255);
+      l_ajax_identifier varchar2(4000);
+      l_config_json     clob;
+      l_onload_js       clob;
+      l_file_prefix     varchar2(4000);
+   begin
+      if apex_application.g_debug then
+         apex_plugin_util.debug_region(
+            p_plugin              => p_plugin,
+            p_region              => p_region,
+            p_is_printer_friendly => p_is_printer_friendly
+         );
+      end if;
+
+      if p_is_printer_friendly then
+         return l_result;
+      end if;
+      l_static_id := nvl(
+         p_region.static_id,
+         'RP_REGION_' || p_region.id
+      );
+      l_container_id := l_static_id || '_wrapper';
+      l_canvas_id := l_static_id || '_room_plan';
+      l_file_prefix := coalesce(
+         p_region.attribute_03,
+         p_plugin.file_prefix
+      );
+      print_markup(
+         p_container_id => l_container_id,
+         p_canvas_id    => l_canvas_id
+      );
+      l_ajax_identifier := apex_plugin.get_ajax_identifier;
+      apex_json.initialize_clob_output;
+      apex_json.open_object;
+      apex_json.write(
+         'containerId',
+         l_container_id
+      );
+      apex_json.write(
+         'canvasId',
+         l_canvas_id
+      );
+      apex_json.write(
+         'regionId',
+         p_region.id
+      );
+      apex_json.write(
+         'ajaxIdentifier',
+         l_ajax_identifier
+      );
+      apex_json.close_object;
+      l_config_json := apex_json.get_clob_output;
+      apex_json.free_output;
+      l_onload_js := apex_string.join_clob(apex_t_varchar2(
+         q'[RoomPlanInitRegion(]',
+         l_config_json,
+         q'[);]'
+      ));
+      apex_javascript.add_onload_code(p_code => l_onload_js);
+      return l_result;
+   exception
+      when others then
+         apex_debug.error(
+            p_message => 'room_plan_region_plugin.render_region failed: %s',
+            p0        => sqlerrm
+         );
+         raise;
+   end render_region;
 
 end room_plan_region_plugin;
 /
