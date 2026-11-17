@@ -25,28 +25,12 @@ create or replace package body room_plan_region_plugin as
          q'[[]',
          q'[{"label":"Tisch","template":{"kind":"DESK","deskTyp":"WORKSTATION","label":"Tisch","breite":140,"hoehe":70}},]',
          q'[{"label":"Monitor","template":{"kind":"ASSET","label":"Monitor","hardwareId":4712,"breite":60,"hoehe":15}},]',
-         q'[{"label":"Dockingstation","template":{"kind":"ASSET","label":"Dockingstation","hardwareId":4713,"breite":20,"hoehe":10}},]'
-         ,
-         q'[{"label":"PC (Beispiel-Asset)","template":{"kind":"ASSET","label":"PC","hardwareId":4711,"breite":30,"hoehe":20}},]'
-         ,
-         q'[{"label":"Netzwerkdose","template":{"kind":"SOCKET","socketTyp":"NETZWERK","label":"Dose","breite":0,"hoehe":0}},]'
-         ,
+         q'[{"label":"Dockingstation","template":{"kind":"ASSET","label":"Dockingstation","hardwareId":4713,"breite":20,"hoehe":10}},]',
+         q'[{"label":"PC (Beispiel-Asset)","template":{"kind":"ASSET","label":"PC","hardwareId":4711,"breite":30,"hoehe":20}},]',
+         q'[{"label":"Netzwerkdose","template":{"kind":"SOCKET","socketTyp":"NETZWERK","label":"Dose","breite":0,"hoehe":0}},]',
          q'[{"label":"Stromdose","template":{"kind":"SOCKET","socketTyp":"STROM","label":"Dose","breite":0,"hoehe":0}},]',
-         q'[{"label":"Tur (nur auf Wand ziehbar, Standardbreite 100cm)","template":{"kind":"FEATURE","featureTyp":"TUER","label":"Tur","breite":100,"hoehe":0}},]'
-         ,
-         q'[
-  {
-    "label": "Fenster (nur auf Wand ziehbar)",
-    "template": {
-      "kind": "FEATURE",
-      "featureTyp": "FENSTER",
-      "label": "Fenster",
-      "breite": 100,
-      "hoehe": 0
-    }
-  }
-]'
-         ,
+         q'[{"label":"Tur (nur auf Wand ziehbar, Standardbreite 100cm)","template":{"kind":"FEATURE","featureTyp":"TUER","label":"Tur","breite":100,"hoehe":0}},]',
+         q'[{"label": "Fenster (nur auf Wand ziehbar)","template": {"kind": "FEATURE","featureTyp": "FENSTER","label":"Fenster", "breite": 100,"hoehe": 0 } }]',
          q'[]]'
       ));
    end default_palette;
@@ -103,31 +87,35 @@ create or replace package body room_plan_region_plugin as
       sys.htp.p('  <div class="rp-editor">');
       sys.htp.p('    <div id="'
                 || apex_escape.html_attribute(p_canvas_id) || '" class="room-plan"></div>');
-      sys.htp.p('    <div class="rp-zoom-controls">');
-      sys.htp.p('      <button type="button" data-action="zoom-out">-</button>');
-      sys.htp.p('      <button type="button" data-action="zoom-reset">100%</button>');
-      sys.htp.p('      <button type="button" data-action="zoom-in">+</button>');
-      sys.htp.p('      <button type="button" data-action="view-reset">Ansicht zurucksetzen</button>');
-      sys.htp.p('      <button type="button" data-action="fit">An Fenster anpassen</button>');
-      sys.htp.p('      <button type="button" data-action="save">Speichern</button>');
+      sys.htp.p('    <div class="a-Toolbar rp-zoom-controls">');
+      sys.htp.p('      <div class="a-Toolbar-body">');
+      sys.htp.p('        <div class="a-Toolbar-group">');
+      sys.htp.p('          <button type="button" class="t-Button t-Button--small" data-action="zoom-out">-</button>');
+      sys.htp.p('          <button type="button" class="t-Button t-Button--small" data-action="zoom-reset">100%</button>');
+      sys.htp.p('          <button type="button" class="t-Button t-Button--small" data-action="zoom-in">+</button>');
+      sys.htp.p('          <button type="button" class="t-Button t-Button--small" data-action="view-reset">Ansicht zurucksetzen</button>');
+      sys.htp.p('          <button type="button" class="t-Button t-Button--small" data-action="fit">An Fenster anpassen</button>');
+      sys.htp.p('          <button type="button" class="t-Button t-Button--small t-Button--hot" data-action="save">Speichern</button>');
+      sys.htp.p('        </div>');
+      sys.htp.p('      </div>');
       sys.htp.p('    </div>');
       sys.htp.p('    <pre class="rp-state-log"></pre>');
       sys.htp.p('  </div>');
       sys.htp.p('</div>');
       sys.htp.p('<style>');
       sys.htp.p('  #'
-                || apex_escape.html_attribute(p_container_id) || ' { font-family: sans-serif; display: flex; gap: 16px; }');
+                || apex_escape.html_attribute(p_container_id) || ' { display: flex; gap: 16px; }');
       sys.htp.p('  #'
                 || apex_escape.html_attribute(p_container_id) || ' .rp-palette { display: flex; flex-direction: column; gap: 8px; width: 200px; }'
                 );
       sys.htp.p('  #'
-                || apex_escape.html_attribute(p_container_id) || ' .rp-palette-item { border: 1px solid #999; border-radius: 4px; padding: 8px; cursor: grab; background: #fafafa; text-align: center; font-size: 13px; }'
+                || apex_escape.html_attribute(p_container_id) || ' .rp-palette-item { cursor: grab; width: 100%; text-align: left; }'
                 );
       sys.htp.p('  #'
-                || apex_escape.html_attribute(p_container_id) || ' .room-plan { border: 1px solid #ccc; width: 900px; height: 650px; overflow: hidden; }'
+                || apex_escape.html_attribute(p_container_id) || ' .room-plan { border: 1px solid; width: 900px; height: 650px; overflow: hidden; }'
                 );
       sys.htp.p('  #'
-                || apex_escape.html_attribute(p_container_id) || ' .rp-zoom-controls { margin: 8px 0; display: flex; gap: 8px; flex-wrap: wrap; }'
+                || apex_escape.html_attribute(p_container_id) || ' .rp-zoom-controls { margin: 8px 0; }'
                 );
       sys.htp.p('  #'
                 || apex_escape.html_attribute(p_container_id) || ' .rp-state-log { max-width: 640px; white-space: pre-wrap; font-size: 12px; margin-top: 8px; }'

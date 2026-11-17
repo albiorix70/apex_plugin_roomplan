@@ -32,7 +32,7 @@ window.RoomPlanInitRegion = function (config) {
       var paletteContainer = root.querySelector(".rp-palette");
       paletteData.forEach(function (item) {
         var el = document.createElement("div");
-        el.className = "rp-palette-item";
+        el.className = "t-Button t-Button--small rp-palette-item";
         el.setAttribute("draggable", "true");
         el.textContent = item.label || "Element";
         el.dataset.template = JSON.stringify(item.template || {});

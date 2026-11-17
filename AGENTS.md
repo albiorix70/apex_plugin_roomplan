@@ -13,6 +13,7 @@ This repository is an Oracle APEX plugin project for Roomplan.
 - Prefer minimal changes and keep Oracle APEX compatibility in mind.
 - When a task touches JavaScript assets, account for the sync flow in [scripts/sync-roomplan-js.ps1](scripts/sync-roomplan-js.ps1).
 - Do not invent npm, Node, SQLcl, or test commands unless the repository adds them.
+- In files committed to this repository (e.g. APEX exports under `src/plugin/`), always use `TEST` as the schema name. Replace any other schema or owner name (e.g. from the connected database) with `TEST`.
 - If SQL or PL/SQL files are introduced or edited, also follow [.github/instructions/oracle-apex-plsql.instructions.md](.github/instructions/oracle-apex-plsql.instructions.md).
 
 ## Validation
