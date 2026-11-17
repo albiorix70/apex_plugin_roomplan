@@ -26,7 +26,7 @@ if (Test-Path -LiteralPath $resolvedDestinationDir) {
 New-Item -ItemType Directory -Path $resolvedDestinationDir -Force | Out-Null
 
 foreach ($sourceFile in $sourceFiles) {
-    $relativePath = $sourceFile.FullName.Substring($resolvedSourceDir.Length).TrimStart('\')
+    $relativePath = $sourceFile.FullName.Substring($resolvedSourceDir.Length).TrimStart('\', '/')
     $destinationPath = Join-Path $resolvedDestinationDir $relativePath
     $destinationDirectory = Split-Path -Path $destinationPath -Parent
 

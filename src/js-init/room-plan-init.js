@@ -13,6 +13,12 @@ window.RoomPlanInitRegion = function (config) {
     return;
   }
 
+  var rendererKey = "roomPlanRenderer_" + config.regionId;
+  if (window[rendererKey] && typeof window[rendererKey].destroy === "function") {
+    window[rendererKey].destroy();
+  }
+  window[rendererKey] = null;
+
   canvas.textContent = "Wird geladen...";
 
   apex.server.plugin(config.ajaxIdentifier, {}, {
@@ -27,7 +33,7 @@ window.RoomPlanInitRegion = function (config) {
           if (window.console) { console.warn(warn.code, warn.message); }
         }
       });
-      window["roomPlanRenderer_" + config.regionId] = renderer;
+      window[rendererKey] = renderer;
 
       var paletteContainer = root.querySelector(".rp-palette");
       paletteData.forEach(function (item) {
