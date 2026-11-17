@@ -1,29 +1,40 @@
 param(
-    [string]$SourceDir = (Join-Path $PSScriptRoot '..\apex_plugin_roomplan_js\dist'),
-    [string]$DestinationFile = (Join-Path $PSScriptRoot '..\assets\roomplan.js')
+    [string]$SourceDir = (Join-Path $PSScriptRoot '..\..\apex_plugin_roomplan_js\dist'),
+    [string]$DestinationDir = (Join-Path $PSScriptRoot '..\src\js')
 )
 
 $resolvedSourceDir = [System.IO.Path]::GetFullPath($SourceDir)
+$excludedTypesDir = Join-Path $resolvedSourceDir 'types'
 
 if (-not (Test-Path -LiteralPath $resolvedSourceDir)) {
     throw "Source directory not found: $resolvedSourceDir"
 }
 
-$sourceFile = Get-ChildItem -LiteralPath $resolvedSourceDir -Filter '*.js' -File |
-    Sort-Object LastWriteTime -Descending |
-    Select-Object -First 1
+$sourceFiles = Get-ChildItem -LiteralPath $resolvedSourceDir -Recurse -File |
+    Where-Object { $_.FullName -notlike "$excludedTypesDir\*" }
 
-if (-not $sourceFile) {
-    throw "No JavaScript bundle found in: $resolvedSourceDir"
+if (-not $sourceFiles) {
+    throw "No distribution files found in: $resolvedSourceDir"
 }
 
-$destinationPath = [System.IO.Path]::GetFullPath($DestinationFile)
-$destinationDirectory = Split-Path -Path $destinationPath -Parent
+$resolvedDestinationDir = [System.IO.Path]::GetFullPath($DestinationDir)
 
-if (-not (Test-Path -LiteralPath $destinationDirectory)) {
-    New-Item -ItemType Directory -Path $destinationDirectory | Out-Null
+if (Test-Path -LiteralPath $resolvedDestinationDir) {
+    Get-ChildItem -LiteralPath $resolvedDestinationDir -Force | Remove-Item -Recurse -Force
 }
 
-Copy-Item -LiteralPath $sourceFile.FullName -Destination $destinationPath -Force
+New-Item -ItemType Directory -Path $resolvedDestinationDir -Force | Out-Null
 
-Write-Host "Copied $($sourceFile.Name) to $destinationPath"
+foreach ($sourceFile in $sourceFiles) {
+    $relativePath = $sourceFile.FullName.Substring($resolvedSourceDir.Length).TrimStart('\')
+    $destinationPath = Join-Path $resolvedDestinationDir $relativePath
+    $destinationDirectory = Split-Path -Path $destinationPath -Parent
+
+    if (-not (Test-Path -LiteralPath $destinationDirectory)) {
+        New-Item -ItemType Directory -Path $destinationDirectory -Force | Out-Null
+    }
+
+    Copy-Item -LiteralPath $sourceFile.FullName -Destination $destinationPath -Force
+}
+
+Write-Host "Synced $($sourceFiles.Count) file(s) from $resolvedSourceDir to $resolvedDestinationDir"
