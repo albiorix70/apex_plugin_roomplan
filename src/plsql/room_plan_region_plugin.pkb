@@ -93,7 +93,7 @@ create or replace package body room_plan_region_plugin as
       sys.htp.p('          <button type="button" class="t-Button t-Button--small" data-action="zoom-out" aria-label="Verkleinern" title="Verkleinern">-</button>');
       sys.htp.p('          <button type="button" class="t-Button t-Button--small" data-action="zoom-reset" aria-label="Zoom zuruecksetzen" title="Zoom zuruecksetzen">100%</button>');
       sys.htp.p('          <button type="button" class="t-Button t-Button--small" data-action="zoom-in" aria-label="Vergroessern" title="Vergroessern">+</button>');
-      sys.htp.p('          <button type="button" class="t-Button t-Button--small" data-action="view-reset">Ansicht zurucksetzen</button>');
+      sys.htp.p('          <button type="button" class="t-Button t-Button--small" data-action="view-reset" aria-label="Ansicht zuruecksetzen" title="Ansicht zuruecksetzen">Ansicht zuruecksetzen</button>');
       sys.htp.p('          <button type="button" class="t-Button t-Button--small" data-action="fit">An Fenster anpassen</button>');
       sys.htp.p('          <button type="button" class="t-Button t-Button--small t-Button--hot" data-action="save">Speichern</button>');
       sys.htp.p('        </div>');

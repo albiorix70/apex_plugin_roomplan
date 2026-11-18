@@ -36,6 +36,7 @@ window.RoomPlanInitRegion = function (config) {
       window[rendererKey] = renderer;
 
       var paletteContainer = root.querySelector(".rp-palette");
+      paletteContainer.textContent = "";
       paletteData.forEach(function (item) {
         var el = document.createElement("div");
         el.className = "t-Button t-Button--small rp-palette-item";
@@ -50,7 +51,8 @@ window.RoomPlanInitRegion = function (config) {
 
       var bind = function (action, fn) {
         var btn = root.querySelector('button[data-action="' + action + '"]');
-        if (btn) { btn.addEventListener("click", fn); }
+        // onclick statt addEventListener: verhindert gestapelte Handler bei erneuter Initialisierung
+        if (btn) { btn.onclick = fn; }
       };
       bind("zoom-in", function () { renderer.zoomIn(); });
       bind("zoom-out", function () { renderer.zoomOut(); });
