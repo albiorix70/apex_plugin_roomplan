@@ -27,16 +27,19 @@ var RoomPlan = (() => {
     arcPathBetween: () => arcPathBetween,
     closestPointOnSegment: () => closestPointOnSegment,
     isSimplePolygon: () => isSimplePolygon,
+    isValidCssColor: () => isValidCssColor,
     isValidEntityType: () => isValidEntityType,
     nearestWallSegment: () => nearestWallSegment,
     nearestWallVertex: () => nearestWallVertex,
     normalizeWallPath: () => normalizeWallPath,
     pointInPolygon: () => pointInPolygon,
     rectPath: () => rectPath,
+    resolveMessages: () => resolveMessages,
     safeJsonParse: () => safeJsonParse,
     sanitizeLabel: () => sanitizeLabel,
     segmentsIntersect: () => segmentsIntersect,
     toValidInteger: () => toValidInteger,
+    validateAssetLookupResult: () => validateAssetLookupResult,
     validateDimensions: () => validateDimensions,
     validateEntityLookup: () => validateEntityLookup,
     validatePaletteTemplate: () => validatePaletteTemplate,
@@ -62,33 +65,70 @@ var RoomPlan = (() => {
     if (typeof template !== "object" || template === null || Array.isArray(template)) {
       return {
         valid: false,
-        errors: ["Template muss ein Objekt sein"]
+        errors: ["Template must be an object"]
       };
     }
     const t = template;
     if (!t.kind) {
-      errors.push("Template.kind ist erforderlich");
+      errors.push("Template.kind is required");
     } else if (!isValidEntityType(t.kind)) {
-      errors.push(`Template.kind muss ein g\xFCltiger EntityTyp sein (DESK|ASSET|SOCKET|FEATURE), got: ${t.kind}`);
+      errors.push(`Template.kind must be a valid EntityTyp (DESK|ASSET|SOCKET|FEATURE), got: ${t.kind}`);
     }
-    if (!Number.isFinite(t.breite) || t.breite < VALIDATION_LIMITS.MIN_SIZE || t.breite > VALIDATION_LIMITS.MAX_SIZE) {
-      errors.push(`breite muss zwischen ${VALIDATION_LIMITS.MIN_SIZE} und ${VALIDATION_LIMITS.MAX_SIZE} liegen`);
+    if (t.kind === "SOCKET") {
+      if (t.breite !== void 0 && (!Number.isFinite(t.breite) || t.breite < 0 || t.breite > VALIDATION_LIMITS.MAX_SIZE)) {
+        errors.push(`breite (if set) must be between 0 and ${VALIDATION_LIMITS.MAX_SIZE}`);
+      }
+    } else if (!Number.isFinite(t.breite) || t.breite < VALIDATION_LIMITS.MIN_SIZE || t.breite > VALIDATION_LIMITS.MAX_SIZE) {
+      errors.push(`breite must be between ${VALIDATION_LIMITS.MIN_SIZE} and ${VALIDATION_LIMITS.MAX_SIZE}`);
     }
-    if (t.kind !== "FEATURE") {
+    if (t.kind !== "FEATURE" && t.kind !== "SOCKET") {
       if (!Number.isFinite(t.hoehe) || t.hoehe < VALIDATION_LIMITS.MIN_SIZE || t.hoehe > VALIDATION_LIMITS.MAX_SIZE) {
-        errors.push(`hoehe muss zwischen ${VALIDATION_LIMITS.MIN_SIZE} und ${VALIDATION_LIMITS.MAX_SIZE} liegen`);
+        errors.push(`hoehe must be between ${VALIDATION_LIMITS.MIN_SIZE} and ${VALIDATION_LIMITS.MAX_SIZE}`);
       }
     } else if (t.hoehe !== void 0 && (!Number.isFinite(t.hoehe) || t.hoehe < 0 || t.hoehe > VALIDATION_LIMITS.MAX_SIZE)) {
-      errors.push(`hoehe (falls gesetzt) muss zwischen 0 und ${VALIDATION_LIMITS.MAX_SIZE} liegen`);
+      errors.push(`hoehe (if set) must be between 0 and ${VALIDATION_LIMITS.MAX_SIZE}`);
     }
     if (t.label !== void 0) {
       const label = String(t.label || "");
       if (label.length > VALIDATION_LIMITS.MAX_LABEL_LENGTH) {
-        errors.push(`label darf maximal ${VALIDATION_LIMITS.MAX_LABEL_LENGTH} Zeichen lang sein`);
+        errors.push(`label may be at most ${VALIDATION_LIMITS.MAX_LABEL_LENGTH} characters long`);
       }
     }
     if (t.angle !== void 0 && (!Number.isFinite(t.angle) || t.angle < 0 || t.angle > 360)) {
-      errors.push("angle muss zwischen 0 und 360 liegen (falls gesetzt)");
+      errors.push("angle must be between 0 and 360 when set");
+    }
+    if (t.assetTyp !== void 0 && (typeof t.assetTyp !== "string" || t.assetTyp.length > VALIDATION_LIMITS.MAX_LABEL_LENGTH)) {
+      errors.push(`assetTyp (if set) must be a string with at most ${VALIDATION_LIMITS.MAX_LABEL_LENGTH} characters`);
+    }
+    return {
+      valid: errors.length === 0,
+      errors
+    };
+  }
+  function isValidCssColor(value) {
+    if (typeof value !== "string" || value.length === 0 || value.length > 32) return false;
+    return /^#[0-9a-fA-F]{3}$|^#[0-9a-fA-F]{6}$|^#[0-9a-fA-F]{8}$|^[a-zA-Z]{3,32}$/.test(value);
+  }
+  function validateAssetLookupResult(result) {
+    const errors = [];
+    if (typeof result !== "object" || result === null || Array.isArray(result)) {
+      return { valid: false, errors: ["Lookup result must be an object"] };
+    }
+    const r = result;
+    if (typeof r.label !== "string" || r.label.length === 0 || r.label.length > VALIDATION_LIMITS.MAX_LABEL_LENGTH) {
+      errors.push(`label must be a non-empty string with at most ${VALIDATION_LIMITS.MAX_LABEL_LENGTH} characters`);
+    }
+    if (!Number.isFinite(r.breite) || r.breite < VALIDATION_LIMITS.MIN_SIZE || r.breite > VALIDATION_LIMITS.MAX_SIZE) {
+      errors.push(`breite must be between ${VALIDATION_LIMITS.MIN_SIZE} and ${VALIDATION_LIMITS.MAX_SIZE}`);
+    }
+    if (!Number.isFinite(r.hoehe) || r.hoehe < VALIDATION_LIMITS.MIN_SIZE || r.hoehe > VALIDATION_LIMITS.MAX_SIZE) {
+      errors.push(`hoehe must be between ${VALIDATION_LIMITS.MIN_SIZE} and ${VALIDATION_LIMITS.MAX_SIZE}`);
+    }
+    if (r.farbe !== void 0 && !isValidCssColor(r.farbe)) {
+      errors.push("farbe (if set) must be a valid hex color (#rgb/#rrggbb/#rrggbbaa) or a simple color name");
+    }
+    if (r.hardwareId !== void 0 && !Number.isFinite(r.hardwareId)) {
+      errors.push("hardwareId (if set) must be a number");
     }
     return {
       valid: errors.length === 0,
@@ -105,13 +145,13 @@ var RoomPlan = (() => {
     result = result.replace(/'/g, "&#39;");
     return result;
   }
-  function validateDimensions(width4, height4) {
+  function validateDimensions(width2, height2) {
     const errors = [];
-    if (!Number.isFinite(width4) || width4 < VALIDATION_LIMITS.MIN_SIZE || width4 > VALIDATION_LIMITS.MAX_SIZE) {
-      errors.push(`width muss zwischen ${VALIDATION_LIMITS.MIN_SIZE} und ${VALIDATION_LIMITS.MAX_SIZE} liegen`);
+    if (!Number.isFinite(width2) || width2 < VALIDATION_LIMITS.MIN_SIZE || width2 > VALIDATION_LIMITS.MAX_SIZE) {
+      errors.push(`width must be between ${VALIDATION_LIMITS.MIN_SIZE} and ${VALIDATION_LIMITS.MAX_SIZE}`);
     }
-    if (!Number.isFinite(height4) || height4 < VALIDATION_LIMITS.MIN_SIZE || height4 > VALIDATION_LIMITS.MAX_SIZE) {
-      errors.push(`height muss zwischen ${VALIDATION_LIMITS.MIN_SIZE} und ${VALIDATION_LIMITS.MAX_SIZE} liegen`);
+    if (!Number.isFinite(height2) || height2 < VALIDATION_LIMITS.MIN_SIZE || height2 > VALIDATION_LIMITS.MAX_SIZE) {
+      errors.push(`height must be between ${VALIDATION_LIMITS.MIN_SIZE} and ${VALIDATION_LIMITS.MAX_SIZE}`);
     }
     return {
       valid: errors.length === 0,
@@ -262,20 +302,619 @@ var RoomPlan = (() => {
     return best;
   }
 
-  // node_modules/@svgdotjs/svg.js/src/utils/methods.js
+  // src/renderers/drag-helpers.ts
+  function setEntityTransform(ctx, g, xUnit, yUnit, rotationDeg, wUnit, hUnit) {
+    const cx2 = ctx.px(wUnit) / 2;
+    const cy2 = ctx.px(hUnit) / 2;
+    g.attr("transform", `translate(${ctx.px(xUnit)}, ${ctx.px(yUnit)}) rotate(${rotationDeg}, ${cx2}, ${cy2})`);
+  }
+  function addRotateHandle(ctx, g, model, wUnit, hUnit) {
+    if (!ctx.opts.editable) return;
+    const w = ctx.px(wUnit);
+    const cx2 = w / 2;
+    const handleOffsetY = -16;
+    const handleGroup = g.group().addClass("rp-rotate-handle");
+    handleGroup.line(cx2, 0, cx2, handleOffsetY).stroke({ color: "#888888", width: 1 });
+    handleGroup.circle(10).center(cx2, handleOffsetY).fill("#ffffff").stroke({ color: "#4a90d9", width: 1.5 });
+    handleGroup.draggable();
+    const angleFromPointer = (clientX, clientY) => {
+      const box = g.rbox(ctx.getSvgRoot());
+      const centerX = box.x + box.width / 2;
+      const centerY = box.y + box.height / 2;
+      const pointer = ctx.getSvgRoot().point(clientX, clientY);
+      const angleRad = Math.atan2(pointer.y - centerY, pointer.x - centerX);
+      let deg = angleRad * 180 / Math.PI + 90;
+      deg = Math.round(deg / 15) * 15;
+      return (deg % 360 + 360) % 360;
+    };
+    handleGroup.on("dragmove", (evt) => {
+      evt.preventDefault();
+      const detail = evt.detail;
+      if (!detail?.event) return;
+      const deg = angleFromPointer(detail.event.clientX, detail.event.clientY);
+      setEntityTransform(ctx, g, model.x, model.y, deg, wUnit, hUnit);
+    });
+    handleGroup.on("dragend", (evt) => {
+      evt.preventDefault();
+      const detail = evt.detail;
+      if (!detail?.event) return;
+      model.rotation = angleFromPointer(detail.event.clientX, detail.event.clientY);
+      ctx.requestRender();
+    });
+  }
+  function makeGroupMovable(ctx, g, parent, model, entity, deskRelativeToRoom, handleAssetDragEnd, bounds) {
+    if (!ctx.opts.editable) return;
+    g.draggable();
+    let dragStart = null;
+    let modelStartX = model.x;
+    let modelStartY = model.y;
+    const currentParentPos = (clientX, clientY) => {
+      const p = parent.point(clientX, clientY);
+      return { x: ctx.toUnit(p.x), y: ctx.toUnit(p.y) };
+    };
+    const computePosition = (clientX, clientY) => {
+      if (!dragStart) return { x: modelStartX, y: modelStartY };
+      const now = currentParentPos(clientX, clientY);
+      let x2 = modelStartX + (now.x - dragStart.x);
+      let y2 = modelStartY + (now.y - dragStart.y);
+      if (bounds) {
+        x2 = Math.max(bounds.minX, Math.min(bounds.maxX, x2));
+        y2 = Math.max(bounds.minY, Math.min(bounds.maxY, y2));
+      }
+      return { x: x2, y: y2 };
+    };
+    g.on("dragstart", (evt) => {
+      const detail = evt.detail;
+      if (!detail?.event) return;
+      modelStartX = model.x;
+      modelStartY = model.y;
+      dragStart = currentParentPos(detail.event.clientX, detail.event.clientY);
+    });
+    g.on("dragmove", (evt) => {
+      evt.preventDefault();
+      const detail = evt.detail;
+      if (!detail?.event) return;
+      const { x: x2, y: y2 } = computePosition(detail.event.clientX, detail.event.clientY);
+      setEntityTransform(ctx, g, x2, y2, model.rotation ?? 0, model.breite, model.hoehe);
+    });
+    g.on("dragend", (evt) => {
+      const detail = evt.detail;
+      const pointerEvt = detail.event;
+      const { x: x2, y: y2 } = pointerEvt ? computePosition(pointerEvt.clientX, pointerEvt.clientY) : { x: modelStartX, y: modelStartY };
+      dragStart = null;
+      const roomPos = entity === "ASSET" && model.deskId !== null && model.deskId !== void 0 ? deskRelativeToRoom(x2, y2, model.deskId) : { x: x2, y: y2 };
+      if (!pointInPolygon(roomPos, ctx.getWallPath())) {
+        ctx.requestRender();
+        return;
+      }
+      if (entity === "ASSET") {
+        handleAssetDragEnd(model, roomPos);
+        return;
+      }
+      model.x = ctx.snap(x2);
+      model.y = ctx.snap(y2);
+      ctx.requestRender();
+    });
+  }
+
+  // src/renderers/render-context.ts
+  function hitTestEntity(evt, expectedEntity) {
+    const target = evt.target;
+    const entityEl = target?.closest("[data-entity]");
+    if (!entityEl) return null;
+    const entityRaw = entityEl.getAttribute("data-entity");
+    if (!isValidEntityType(entityRaw)) {
+      console.error("Invalid entity type:", entityRaw);
+      return null;
+    }
+    if (entityRaw !== expectedEntity) return null;
+    const id = Number(entityEl.getAttribute("data-id"));
+    if (!Number.isFinite(id)) {
+      console.error("Invalid entity ID:", id);
+      return null;
+    }
+    return id;
+  }
+  function createRenderContext(deps) {
+    const resolvers = [];
+    const context = {
+      px: deps.px,
+      toUnit: deps.toUnit,
+      snap: deps.snap,
+      toContentUnit: deps.toContentUnit,
+      getSvgRoot: deps.getSvgRoot,
+      getZoom: deps.getZoom,
+      getWallPath: deps.getWallPath,
+      setWallPath: deps.setWallPath,
+      wallThicknessUnit: deps.wallThicknessUnit,
+      wallSplitThresholdUnit: deps.wallSplitThresholdUnit,
+      wallVertexThresholdUnit: deps.wallVertexThresholdUnit,
+      featureSnapThresholdUnit: deps.featureSnapThresholdUnit,
+      opts: deps.opts,
+      msg: deps.msg,
+      requestRender: deps.requestRender,
+      checkFurnitureOutsideRoom: deps.checkFurnitureOutsideRoom,
+      deleteEntityAndRender: deps.deleteEntityAndRender,
+      buildNameableMenuItems: deps.buildNameableMenuItems,
+      registerContextMenuResolver(resolver) {
+        resolvers.push(resolver);
+      }
+    };
+    const dispatcher = {
+      resolve(evt) {
+        const sorted = [...resolvers].sort((a, b) => a.priority - b.priority);
+        for (const resolver of sorted) {
+          const items = resolver.resolve(evt);
+          if (items) return items;
+        }
+        return null;
+      }
+    };
+    return { context, dispatcher };
+  }
+
+  // src/renderers/asset-renderer.ts
+  var AssetRenderer = class {
+    constructor(ctx, layer, getDesks) {
+      this.ctx = ctx;
+      this.layer = layer;
+      this.getDesks = getDesks;
+      this.assetLookupCache = /* @__PURE__ */ new Map();
+      ctx.registerContextMenuResolver({
+        priority: 0,
+        resolve: (evt) => {
+          const id = hitTestEntity(evt, "ASSET");
+          return id === null ? null : this.buildContextMenuItems(id);
+        }
+      });
+    }
+    /** Delete action only; assets do not have their own rename action. */
+    buildContextMenuItems(id) {
+      return [{ label: this.ctx.msg.contextMenu.delete, onClick: () => this.ctx.deleteEntityAndRender("ASSET", id) }];
+    }
+    /** Freistehende Assets (nicht an einen Tisch gedockt). */
+    render(freeAssets) {
+      freeAssets.forEach((a) => this.renderFreeAsset(a));
+    }
+    /** Ein an `desk` gedocktes Asset, als Kind von dessen bereits gerenderter Gruppe. */
+    renderDocked(deskGroup, a, desk) {
+      const w = this.ctx.px(a.breite);
+      const h = this.ctx.px(a.hoehe);
+      const g = deskGroup.group().addClass("rp-asset-group");
+      setEntityTransform(this.ctx, g, a.x, a.y, a.rotation ?? 0, a.breite, a.hoehe);
+      g.rect(w, h).fill(a.farbe ?? "#f5c451").stroke({ color: "#8a6d1a", width: 1 }).addClass("rp-asset");
+      g.text(a.label).move(2, 1).font({ size: 9 });
+      g.data("id", a.id);
+      g.data("entity", "ASSET");
+      if (this.ctx.opts.editable) {
+        makeGroupMovable(
+          this.ctx,
+          g,
+          deskGroup,
+          a,
+          "ASSET",
+          (x2, y2, deskId) => this.deskRelativeToRoom(x2, y2, deskId),
+          (asset, roomPos) => this.handleAssetDragEnd(asset, roomPos),
+          { minX: 0, minY: 0, maxX: desk.breite - a.breite, maxY: desk.hoehe - a.hoehe }
+        );
+        addRotateHandle(this.ctx, g, a, a.breite, a.hoehe);
+      }
+    }
+    renderFreeAsset(a) {
+      const w = this.ctx.px(a.breite);
+      const h = this.ctx.px(a.hoehe);
+      const g = this.layer.group().addClass("rp-asset-group rp-asset-free");
+      setEntityTransform(this.ctx, g, a.x, a.y, a.rotation ?? 0, a.breite, a.hoehe);
+      g.rect(w, h).fill(a.farbe ?? "#f5c451").stroke({ color: "#8a6d1a", width: 1 }).addClass("rp-asset");
+      g.text(a.label).move(2, 1).font({ size: 9 });
+      g.data("id", a.id);
+      g.data("entity", "ASSET");
+      if (this.ctx.opts.editable) {
+        makeGroupMovable(
+          this.ctx,
+          g,
+          this.layer,
+          a,
+          "ASSET",
+          (x2, y2, deskId) => this.deskRelativeToRoom(x2, y2, deskId),
+          (asset, roomPos) => this.handleAssetDragEnd(asset, roomPos)
+        );
+        addRotateHandle(this.ctx, g, a, a.breite, a.hoehe);
+      }
+    }
+    /** Absolute Raumposition eines an `deskId` gedockten Assets, ausgehend von dessen desk-relativen Koordinaten. */
+    deskRelativeToRoom(x2, y2, deskId) {
+      const desk = this.getDesks().find((d) => d.id === deskId);
+      return desk ? { x: desk.x + x2, y: desk.y + y2 } : { x: x2, y: y2 };
+    }
+    /**
+     * Docking-Logik: liegt der Loslass-Punkt über einem Tisch, wird das Gerät an diesen Tisch
+     * gebunden (Koordinaten relativ), sonst frei im Raum platziert (Koordinaten absolut,
+     * deskId = null).
+     */
+    handleAssetDragEnd(asset, roomPos) {
+      const targetDesk = this.getDesks().find(
+        (d) => roomPos.x >= d.x && roomPos.x <= d.x + d.breite && roomPos.y >= d.y && roomPos.y <= d.y + d.hoehe
+      );
+      if (targetDesk) {
+        asset.deskId = targetDesk.id;
+        asset.x = this.ctx.snap(roomPos.x - targetDesk.x);
+        asset.y = this.ctx.snap(roomPos.y - targetDesk.y);
+      } else {
+        asset.deskId = null;
+        asset.x = this.ctx.snap(roomPos.x);
+        asset.y = this.ctx.snap(roomPos.y);
+      }
+      this.ctx.requestRender();
+    }
+    /** Neuanlage per Drop; dockt automatisch an einen Tisch, wenn der Drop-Punkt über dessen Fläche liegt. */
+    createFromTemplate(template, pos, tempId) {
+      const targetDesk = this.getDesks().find(
+        (d) => pos.x >= d.x && pos.x <= d.x + d.breite && pos.y >= d.y && pos.y <= d.y + d.hoehe
+      );
+      const looked = template.assetTyp ? this.assetLookupCache.get(template.assetTyp) : void 0;
+      return {
+        id: tempId,
+        hardwareId: looked?.hardwareId ?? template.hardwareId ?? 0,
+        label: sanitizeLabel(looked?.label ?? template.label),
+        breite: looked?.breite ?? template.breite,
+        hoehe: looked?.hoehe ?? template.hoehe,
+        x: targetDesk ? pos.x - targetDesk.x : pos.x,
+        y: targetDesk ? pos.y - targetDesk.y : pos.y,
+        deskId: targetDesk ? targetDesk.id : null,
+        farbe: looked?.farbe
+      };
+    }
+    /**
+     * Fragt per onAssetLookup-Callback (Host-Implementierung, z.B. via apex.server.process) Daten
+     * zu einem Asset-Typ ab und cacht das Ergebnis für den nächsten Drop eines ASSET-Palette-Items
+     * mit passendem PaletteTemplate.assetTyp (siehe createFromTemplate()). Lookup-Trigger (diese
+     * Methode) und Drop sind bewusst getrennte Events – der Host ruft diese Methode z.B. von einem
+     * eigenen Klick-Handler auf dem Palette-Button aus auf, unabhängig vom dragstart-Handler.
+     * Silent-fail wie überall sonst: Fehler/ungültige Antworten werden geloggt, nie geworfen.
+     */
+    async lookupAssetTemplate(assetTyp, locationId) {
+      let result;
+      try {
+        result = await this.ctx.opts.onAssetLookup(assetTyp, locationId);
+      } catch (err) {
+        console.error("onAssetLookup callback failed:", err instanceof Error ? err.message : String(err));
+        return null;
+      }
+      if (!result) return null;
+      const validation = validateAssetLookupResult(result);
+      if (!validation.valid) {
+        console.error("Invalid asset lookup result:", validation.errors);
+        return null;
+      }
+      this.assetLookupCache.set(assetTyp, result);
+      return result;
+    }
+    /** Verwirft gecachte Lookup-Ergebnisse (Raumwechsel via loadData(), oder destroy()). */
+    clearLookupCache() {
+      this.assetLookupCache.clear();
+    }
+  };
+
+  // src/renderers/naming-helper.ts
+  function nextDefaultName(raumName, existingCount) {
+    const prefix = raumName ?? "";
+    return `${prefix}${String(existingCount + 1).padStart(2, "0")}`;
+  }
+  function renameEntity(ctx, entity, id, list, raumName) {
+    const item = list.find((e) => e.id === id);
+    if (!validateEntityLookup(item, entity, id)) return;
+    const suggested = nextDefaultName(raumName, list.length);
+    const input = window.prompt(ctx.msg.contextMenu.renamePrompt, suggested);
+    if (input === null) return;
+    const sanitized = sanitizeLabel(input).trim();
+    item.name = sanitized.length > 0 ? sanitized : suggested;
+    ctx.requestRender();
+  }
+  function buildNameableMenuItems(ctx, entity, id, list, raumName) {
+    return [
+      { label: ctx.msg.contextMenu.rename, onClick: () => renameEntity(ctx, entity, id, list, raumName) },
+      { label: ctx.msg.contextMenu.delete, onClick: () => ctx.deleteEntityAndRender(entity, id) }
+    ];
+  }
+
+  // src/types.ts
+  var DESK_FILL_COLORS = {
+    WORKSTATION: "#d0e4f5",
+    DUMMY: "#e8e0d0"
+  };
+
+  // src/renderers/desk-renderer.ts
+  var DeskRenderer = class {
+    constructor(ctx, layer, assetRenderer, getAssets) {
+      this.ctx = ctx;
+      this.layer = layer;
+      this.assetRenderer = assetRenderer;
+      this.getAssets = getAssets;
+      ctx.registerContextMenuResolver({
+        priority: 0,
+        resolve: (evt) => {
+          const id = hitTestEntity(evt, "DESK");
+          return id === null ? null : this.buildContextMenuItems(id);
+        }
+      });
+    }
+    render(desks) {
+      desks.forEach((d) => this.renderDesk(d));
+    }
+    /** Rename and delete actions for desks. */
+    buildContextMenuItems(id) {
+      return this.ctx.buildNameableMenuItems("DESK", id);
+    }
+    /** Neuanlage per Drop; anders als Asset gibt es kein Docking beim Anlegen selbst (nur beim Draggen eines Assets auf den Tisch). */
+    createFromTemplate(template, pos, tempId) {
+      return {
+        id: tempId,
+        name: sanitizeLabel(template.label),
+        deskTyp: template.deskTyp ?? "WORKSTATION",
+        x: pos.x,
+        y: pos.y,
+        breite: template.breite,
+        hoehe: template.hoehe
+      };
+    }
+    renderDesk(d) {
+      const g = this.layer.group().addClass("rp-desk");
+      const w = this.ctx.px(d.breite);
+      const h = this.ctx.px(d.hoehe);
+      setEntityTransform(this.ctx, g, d.x, d.y, d.rotation ?? 0, d.breite, d.hoehe);
+      g.rect(w, h).fill(DESK_FILL_COLORS[d.deskTyp]).stroke({ color: "#555555", width: 1 });
+      g.text(d.name).move(4, 2).font({ size: 11, family: "sans-serif" });
+      g.data("id", d.id);
+      g.data("entity", "DESK");
+      this.getAssets().filter((a) => a.deskId === d.id).forEach((a) => this.assetRenderer.renderDocked(g, a, d));
+      if (this.ctx.opts.editable) {
+        makeGroupMovable(
+          this.ctx,
+          g,
+          this.layer,
+          d,
+          "DESK",
+          (x2, y2, deskId) => this.assetRenderer.deskRelativeToRoom(x2, y2, deskId),
+          (asset, roomPos) => this.assetRenderer.handleAssetDragEnd(asset, roomPos)
+        );
+        addRotateHandle(this.ctx, g, d, d.breite, d.hoehe);
+      }
+    }
+  };
+
+  // src/renderers/feature-renderer.ts
+  var FeatureRenderer = class {
+    constructor(ctx, layer, getFeatures) {
+      this.ctx = ctx;
+      this.layer = layer;
+      this.getFeatures = getFeatures;
+      ctx.registerContextMenuResolver({
+        priority: 0,
+        resolve: (evt) => {
+          const id = hitTestEntity(evt, "FEATURE");
+          return id === null ? null : this.buildContextMenuItems(id);
+        }
+      });
+    }
+    render() {
+      this.getFeatures().forEach((f) => this.renderFeature(f));
+    }
+    renderFeature(f) {
+      if (f.typ === "TUER") {
+        this.renderDoorFeature(f);
+        return;
+      }
+      const w = this.ctx.px(f.breite);
+      const h = this.ctx.px(this.ctx.wallThicknessUnit);
+      const rect = this.layer.rect(w, h).fill("#4a90d9").addClass("rp-feature rp-feature-fenster");
+      this.setFeatureTransform(rect, f);
+      rect.data("id", f.id);
+      rect.data("entity", "FEATURE");
+      if (this.ctx.opts.editable) this.makeFeatureMovable(rect, f, (el, ff) => this.setFeatureTransform(el, ff));
+    }
+    /**
+     * Draws a schematic door with a wall opening, an angled leaf, and a dashed swing arc.
+     *
+     * The hinge side and swing direction determine the hinge point and sign of the opening arc.
+     */
+    renderDoorFeature(f) {
+      const wPx = this.ctx.px(f.breite);
+      const hPx = this.ctx.px(this.ctx.wallThicknessUnit);
+      const anschlag = f.anschlag ?? "LINKS";
+      const richtung = f.richtung ?? "INNEN";
+      const sign = richtung === "INNEN" ? 1 : -1;
+      const hingeX = anschlag === "LINKS" ? 0 : wPx;
+      const farX = anschlag === "LINKS" ? wPx : 0;
+      const pivotY = hPx / 2;
+      const center2 = { x: hingeX, y: pivotY };
+      const closedTip = { x: farX, y: pivotY };
+      const openTip = { x: hingeX, y: pivotY + sign * wPx };
+      const g = this.layer.group().addClass("rp-feature rp-feature-tuer");
+      g.rect(wPx, hPx).fill("#f7f7f7");
+      g.path(arcPathBetween(center2, closedTip, openTip, wPx)).fill("none").stroke({ color: "#cccccc", width: 1 }).attr("stroke-dasharray", "3,2");
+      g.line(hingeX, pivotY, openTip.x, openTip.y).stroke({ color: "#8b5a2b", width: 3 });
+      this.setFeatureGroupTransform(g, f);
+      g.data("id", f.id);
+      g.data("entity", "FEATURE");
+      if (this.ctx.opts.editable) this.makeFeatureMovable(g, f, (el, ff) => this.setFeatureGroupTransform(el, ff));
+    }
+    /**
+     * Sets the position and rotation of a feature rectangle using an absolute transform rather than
+     * repeated relative `.rotate()` calls.
+     */
+    setFeatureTransform(rect, f) {
+      const xPx = this.ctx.px(f.x);
+      const yPx = this.ctx.px(f.y);
+      const wPx = this.ctx.px(f.breite);
+      const hPx = this.ctx.px(this.ctx.wallThicknessUnit);
+      rect.move(xPx, yPx);
+      rect.attr("transform", `rotate(${f.rotation ?? 0}, ${xPx + wPx / 2}, ${yPx + hPx / 2})`);
+    }
+    /**
+     * Positions the door group with a single absolute `translate()` + `rotate()` transform instead of
+     * relying on a bbox-based `move()` operation.
+     */
+    setFeatureGroupTransform(g, f) {
+      const xPx = this.ctx.px(f.x);
+      const yPx = this.ctx.px(f.y);
+      const wPx = this.ctx.px(f.breite);
+      const hPx = this.ctx.px(this.ctx.wallThicknessUnit);
+      g.attr("transform", `translate(${xPx}, ${yPx}) rotate(${f.rotation ?? 0}, ${wPx / 2}, ${hPx / 2})`);
+    }
+    /** Feature elements can only be moved along the nearest wall, never freely within the room. */
+    makeFeatureMovable(el, f, applyTransform) {
+      if (!this.ctx.opts.editable) return;
+      el.draggable();
+      el.on("dragmove", (evt) => {
+        evt.preventDefault();
+        const detail = evt.detail;
+        if (!detail?.event) return;
+        const p = this.ctx.toContentUnit(detail.event.clientX, detail.event.clientY);
+        const nearest = nearestWallSegment(p, this.ctx.getWallPath());
+        if (!nearest) return;
+        const halfThicknessUnit = this.ctx.wallThicknessUnit / 2;
+        applyTransform(el, {
+          ...f,
+          x: nearest.point.x - f.breite / 2,
+          y: nearest.point.y - halfThicknessUnit,
+          rotation: nearest.angleDeg
+        });
+      });
+      el.on("dragend", (evt) => {
+        const detail = evt.detail;
+        const pointerEvt = detail?.event;
+        if (!pointerEvt) {
+          this.ctx.requestRender();
+          return;
+        }
+        const p = this.ctx.toContentUnit(pointerEvt.clientX, pointerEvt.clientY);
+        const nearest = nearestWallSegment(p, this.ctx.getWallPath());
+        if (!nearest || nearest.distance > this.ctx.featureSnapThresholdUnit) {
+          this.ctx.requestRender();
+          return;
+        }
+        this.snapFeatureToWall(f, nearest.point, nearest.angleDeg);
+        this.ctx.requestRender();
+      });
+    }
+    snapFeatureToWall(f, wallPoint, angleDeg) {
+      const halfThicknessUnit = this.ctx.wallThicknessUnit / 2;
+      f.x = this.ctx.snap(wallPoint.x - f.breite / 2);
+      f.y = this.ctx.snap(wallPoint.y - halfThicknessUnit);
+      f.rotation = angleDeg;
+    }
+    /** Re-aligns a feature to the nearest wall segment using its current position. */
+    realignToWall(featureId) {
+      const f = this.getFeatures().find((ft) => ft.id === featureId);
+      if (!f) return;
+      const halfThicknessUnit = this.ctx.wallThicknessUnit / 2;
+      const center2 = { x: f.x + f.breite / 2, y: f.y + halfThicknessUnit };
+      const nearest = nearestWallSegment(center2, this.ctx.getWallPath());
+      if (!nearest) return;
+      this.snapFeatureToWall(f, nearest.point, nearest.angleDeg);
+      this.ctx.requestRender();
+    }
+    /** Updates the door hinge side or swing direction. */
+    setDoorAnschlag(featureId, anschlag) {
+      const f = this.getFeatures().find((ft) => ft.id === featureId);
+      if (!f) return;
+      f.anschlag = anschlag;
+      this.ctx.requestRender();
+    }
+    setDoorRichtung(featureId, richtung) {
+      const f = this.getFeatures().find((ft) => ft.id === featureId);
+      if (!f) return;
+      f.richtung = richtung;
+      this.ctx.requestRender();
+    }
+    /**
+     * Creates a wall-bound feature from a template and snaps it to the nearest wall segment.
+     *
+     * Returns null when the drop point is too far from any wall; the caller then ignores the drop.
+     */
+    createFromTemplate(template, dropPos, tempId) {
+      const nearest = nearestWallSegment(dropPos, this.ctx.getWallPath());
+      if (!nearest || nearest.distance > this.ctx.featureSnapThresholdUnit) return null;
+      const feature = {
+        id: tempId,
+        typ: template.featureTyp ?? "TUER",
+        x: 0,
+        y: 0,
+        breite: template.breite
+      };
+      this.snapFeatureToWall(feature, nearest.point, nearest.angleDeg);
+      return feature;
+    }
+    /** Menu items for a door or window. Doors also expose hinge and swing-direction toggles. */
+    buildContextMenuItems(featureId) {
+      const f = this.getFeatures().find((ft) => ft.id === featureId);
+      const items = [
+        { label: this.ctx.msg.contextMenu.moveAlongWall, onClick: () => this.realignToWall(featureId) }
+      ];
+      if (f?.typ === "TUER") {
+        const anschlag = f.anschlag ?? "LINKS";
+        const richtung = f.richtung ?? "INNEN";
+        items.push(
+          { label: `${anschlag === "LINKS" ? "\u25CF " : ""}${this.ctx.msg.contextMenu.hingeLeft}`, onClick: () => this.setDoorAnschlag(featureId, "LINKS") },
+          { label: `${anschlag === "RECHTS" ? "\u25CF " : ""}${this.ctx.msg.contextMenu.hingeRight}`, onClick: () => this.setDoorAnschlag(featureId, "RECHTS") },
+          { label: `${richtung === "INNEN" ? "\u25CF " : ""}${this.ctx.msg.contextMenu.openInward}`, onClick: () => this.setDoorRichtung(featureId, "INNEN") },
+          { label: `${richtung === "AUSSEN" ? "\u25CF " : ""}${this.ctx.msg.contextMenu.openOutward}`, onClick: () => this.setDoorRichtung(featureId, "AUSSEN") }
+        );
+      }
+      items.push({ label: this.ctx.msg.contextMenu.delete, onClick: () => this.ctx.deleteEntityAndRender("FEATURE", featureId) });
+      return items;
+    }
+  };
+
+  // node_modules/@svgdotjs/svg.js/dist/svg.esm.js
+  var __create = Object.create;
+  var __defProp2 = Object.defineProperty;
+  var __getOwnPropDesc2 = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames2 = Object.getOwnPropertyNames;
+  var __getProtoOf = Object.getPrototypeOf;
+  var __hasOwnProp2 = Object.prototype.hasOwnProperty;
+  var __commonJSMin = (cb, mod) => () => (mod || (cb((mod = { exports: {} }).exports, mod), cb = null), mod.exports);
+  var __exportAll = (all, no_symbols) => {
+    let target = {};
+    for (var name in all) {
+      __defProp2(target, name, {
+        get: all[name],
+        enumerable: true
+      });
+    }
+    if (!no_symbols) {
+      __defProp2(target, Symbol.toStringTag, { value: "Module" });
+    }
+    return target;
+  };
+  var __copyProps2 = (to2, from2, except, desc) => {
+    if (from2 && typeof from2 === "object" || typeof from2 === "function") {
+      for (var keys = __getOwnPropNames2(from2), i = 0, n = keys.length, key; i < n; i++) {
+        key = keys[i];
+        if (!__hasOwnProp2.call(to2, key) && key !== except) {
+          __defProp2(to2, key, {
+            get: ((k) => from2[k]).bind(null, key),
+            enumerable: !(desc = __getOwnPropDesc2(from2, key)) || desc.enumerable
+          });
+        }
+      }
+    }
+    return to2;
+  };
+  var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps2(isNodeMode || !mod || !mod.__esModule ? __defProp2(target, "default", {
+    value: mod,
+    enumerable: true
+  }) : target, mod));
   var methods = {};
   var names = [];
   function registerMethods(name, m) {
     if (Array.isArray(name)) {
-      for (const _name of name) {
-        registerMethods(_name, m);
-      }
+      for (const _name of name) registerMethods(_name, m);
       return;
     }
     if (typeof name === "object") {
-      for (const _name in name) {
-        registerMethods(_name, name[_name]);
-      }
+      for (const _name in name) registerMethods(_name, name[_name]);
       return;
     }
     addMethodNames(Object.getOwnPropertyNames(m));
@@ -290,26 +929,791 @@ var RoomPlan = (() => {
   function addMethodNames(_names) {
     names.push(..._names);
   }
-
-  // node_modules/@svgdotjs/svg.js/src/utils/utils.js
+  var require_fails = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    module.exports = function(exec) {
+      try {
+        return !!exec();
+      } catch (error) {
+        return true;
+      }
+    };
+  }));
+  var require_function_bind_native = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var fails = require_fails();
+    module.exports = !fails(function() {
+      var test = function() {
+      }.bind();
+      return typeof test != "function" || test.hasOwnProperty("prototype");
+    });
+  }));
+  var require_function_uncurry_this = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var NATIVE_BIND = require_function_bind_native();
+    var FunctionPrototype = Function.prototype;
+    var call = FunctionPrototype.call;
+    var uncurryThisWithBind = NATIVE_BIND && FunctionPrototype.bind.bind(call, call);
+    module.exports = NATIVE_BIND ? uncurryThisWithBind : function(fn) {
+      return function() {
+        return call.apply(fn, arguments);
+      };
+    };
+  }));
+  var require_object_is_prototype_of = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var uncurryThis = require_function_uncurry_this();
+    module.exports = uncurryThis({}.isPrototypeOf);
+  }));
+  var require_global_this = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var check = function(it) {
+      return it && it.Math === Math && it;
+    };
+    module.exports = check(typeof globalThis == "object" && globalThis) || check(typeof window == "object" && window) || check(typeof self == "object" && self) || check(typeof global == "object" && global) || check(typeof exports == "object" && exports) || /* @__PURE__ */ (function() {
+      return this;
+    })() || Function("return this")();
+  }));
+  var require_function_apply = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var NATIVE_BIND = require_function_bind_native();
+    var FunctionPrototype = Function.prototype;
+    var apply = FunctionPrototype.apply;
+    var call = FunctionPrototype.call;
+    module.exports = typeof Reflect == "object" && Reflect.apply || (NATIVE_BIND ? call.bind(apply) : function() {
+      return call.apply(apply, arguments);
+    });
+  }));
+  var require_classof_raw = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var uncurryThis = require_function_uncurry_this();
+    var toString = uncurryThis({}.toString);
+    var stringSlice = uncurryThis("".slice);
+    module.exports = function(it) {
+      return stringSlice(toString(it), 8, -1);
+    };
+  }));
+  var require_function_uncurry_this_clause = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var classofRaw = require_classof_raw();
+    var uncurryThis = require_function_uncurry_this();
+    module.exports = function(fn) {
+      if (classofRaw(fn) === "Function") return uncurryThis(fn);
+    };
+  }));
+  var require_is_callable = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var documentAll = typeof document == "object" && document.all;
+    module.exports = typeof documentAll == "undefined" && documentAll !== void 0 ? function(argument) {
+      return typeof argument == "function" || argument === documentAll;
+    } : function(argument) {
+      return typeof argument == "function";
+    };
+  }));
+  var require_descriptors = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var fails = require_fails();
+    module.exports = !fails(function() {
+      return Object.defineProperty({}, 1, { get: function() {
+        return 7;
+      } })[1] !== 7;
+    });
+  }));
+  var require_function_call = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var NATIVE_BIND = require_function_bind_native();
+    var call = Function.prototype.call;
+    module.exports = NATIVE_BIND ? call.bind(call) : function() {
+      return call.apply(call, arguments);
+    };
+  }));
+  var require_object_property_is_enumerable = /* @__PURE__ */ __commonJSMin(((exports) => {
+    var $propertyIsEnumerable = {}.propertyIsEnumerable;
+    var getOwnPropertyDescriptor = Object.getOwnPropertyDescriptor;
+    var NASHORN_BUG = getOwnPropertyDescriptor && !$propertyIsEnumerable.call({ 1: 2 }, 1);
+    exports.f = NASHORN_BUG ? function propertyIsEnumerable(V) {
+      var descriptor = getOwnPropertyDescriptor(this, V);
+      return !!descriptor && descriptor.enumerable;
+    } : $propertyIsEnumerable;
+  }));
+  var require_create_property_descriptor = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    module.exports = function(bitmap, value) {
+      return {
+        enumerable: !(bitmap & 1),
+        configurable: !(bitmap & 2),
+        writable: !(bitmap & 4),
+        value
+      };
+    };
+  }));
+  var require_indexed_object = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var uncurryThis = require_function_uncurry_this();
+    var fails = require_fails();
+    var classof = require_classof_raw();
+    var $Object = Object;
+    var split = uncurryThis("".split);
+    module.exports = fails(function() {
+      return !$Object("z").propertyIsEnumerable(0);
+    }) ? function(it) {
+      return classof(it) === "String" ? split(it, "") : $Object(it);
+    } : $Object;
+  }));
+  var require_is_null_or_undefined = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    module.exports = function(it) {
+      return it === null || it === void 0;
+    };
+  }));
+  var require_require_object_coercible = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var isNullOrUndefined = require_is_null_or_undefined();
+    var $TypeError = TypeError;
+    module.exports = function(it) {
+      if (isNullOrUndefined(it)) throw new $TypeError("Can't call method on " + it);
+      return it;
+    };
+  }));
+  var require_to_indexed_object = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var IndexedObject = require_indexed_object();
+    var requireObjectCoercible = require_require_object_coercible();
+    module.exports = function(it) {
+      return IndexedObject(requireObjectCoercible(it));
+    };
+  }));
+  var require_is_object = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var isCallable = require_is_callable();
+    module.exports = function(it) {
+      return typeof it == "object" ? it !== null : isCallable(it);
+    };
+  }));
+  var require_path = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    module.exports = {};
+  }));
+  var require_get_built_in = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var path = require_path();
+    var globalThis2 = require_global_this();
+    var isCallable = require_is_callable();
+    var aFunction = function(variable) {
+      return isCallable(variable) ? variable : void 0;
+    };
+    module.exports = function(namespace, method) {
+      return arguments.length < 2 ? aFunction(path[namespace]) || aFunction(globalThis2[namespace]) : path[namespace] && path[namespace][method] || globalThis2[namespace] && globalThis2[namespace][method];
+    };
+  }));
+  var require_environment_user_agent = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var navigator = require_global_this().navigator;
+    var userAgent = navigator && navigator.userAgent;
+    module.exports = userAgent ? String(userAgent) : "";
+  }));
+  var require_environment_v8_version = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var globalThis2 = require_global_this();
+    var userAgent = require_environment_user_agent();
+    var process = globalThis2.process;
+    var Deno = globalThis2.Deno;
+    var versions = process && process.versions || Deno && Deno.version;
+    var v8 = versions && versions.v8;
+    var match;
+    var version;
+    if (v8) {
+      match = v8.split(".");
+      version = match[0] > 0 && match[0] < 4 ? 1 : +(match[0] + match[1]);
+    }
+    if (!version && userAgent) {
+      match = userAgent.match(/Edge\/(\d+)/);
+      if (!match || match[1] >= 74) {
+        match = userAgent.match(/Chrome\/(\d+)/);
+        if (match) version = +match[1];
+      }
+    }
+    module.exports = version;
+  }));
+  var require_symbol_constructor_detection = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var V8_VERSION = require_environment_v8_version();
+    var fails = require_fails();
+    var $String = require_global_this().String;
+    module.exports = !!Object.getOwnPropertySymbols && !fails(function() {
+      var symbol = /* @__PURE__ */ Symbol("symbol detection");
+      return !$String(symbol) || !(Object(symbol) instanceof Symbol) || !Symbol.sham && V8_VERSION && V8_VERSION < 41;
+    });
+  }));
+  var require_use_symbol_as_uid = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var NATIVE_SYMBOL = require_symbol_constructor_detection();
+    module.exports = NATIVE_SYMBOL && !Symbol.sham && typeof Symbol.iterator == "symbol";
+  }));
+  var require_is_symbol = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var getBuiltIn = require_get_built_in();
+    var isCallable = require_is_callable();
+    var isPrototypeOf = require_object_is_prototype_of();
+    var USE_SYMBOL_AS_UID = require_use_symbol_as_uid();
+    var $Object = Object;
+    module.exports = USE_SYMBOL_AS_UID ? function(it) {
+      return typeof it == "symbol";
+    } : function(it) {
+      var $Symbol = getBuiltIn("Symbol");
+      return isCallable($Symbol) && isPrototypeOf($Symbol.prototype, $Object(it));
+    };
+  }));
+  var require_try_to_string = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var $String = String;
+    module.exports = function(argument) {
+      try {
+        return $String(argument);
+      } catch (error) {
+        return "Object";
+      }
+    };
+  }));
+  var require_a_callable = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var isCallable = require_is_callable();
+    var tryToString = require_try_to_string();
+    var $TypeError = TypeError;
+    module.exports = function(argument) {
+      if (isCallable(argument)) return argument;
+      throw new $TypeError(tryToString(argument) + " is not a function");
+    };
+  }));
+  var require_get_method = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var aCallable = require_a_callable();
+    var isNullOrUndefined = require_is_null_or_undefined();
+    module.exports = function(V, P) {
+      var func = V[P];
+      return isNullOrUndefined(func) ? void 0 : aCallable(func);
+    };
+  }));
+  var require_ordinary_to_primitive = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var call = require_function_call();
+    var isCallable = require_is_callable();
+    var isObject = require_is_object();
+    var $TypeError = TypeError;
+    module.exports = function(input, pref) {
+      var fn, val;
+      if (pref === "string" && isCallable(fn = input.toString) && !isObject(val = call(fn, input))) return val;
+      if (isCallable(fn = input.valueOf) && !isObject(val = call(fn, input))) return val;
+      if (pref !== "string" && isCallable(fn = input.toString) && !isObject(val = call(fn, input))) return val;
+      throw new $TypeError("Can't convert object to primitive value");
+    };
+  }));
+  var require_is_pure = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    module.exports = true;
+  }));
+  var require_define_global_property = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var globalThis2 = require_global_this();
+    var defineProperty = Object.defineProperty;
+    module.exports = function(key, value) {
+      try {
+        defineProperty(globalThis2, key, {
+          value,
+          configurable: true,
+          writable: true
+        });
+      } catch (error) {
+        globalThis2[key] = value;
+      }
+      return value;
+    };
+  }));
+  var require_shared_store = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var IS_PURE = require_is_pure();
+    var globalThis2 = require_global_this();
+    var defineGlobalProperty = require_define_global_property();
+    var SHARED = "__core-js_shared__";
+    var store = module.exports = globalThis2[SHARED] || defineGlobalProperty(SHARED, {});
+    (store.versions || (store.versions = [])).push({
+      version: "3.49.0",
+      mode: IS_PURE ? "pure" : "global",
+      copyright: "\xA9 2013\u20132025 Denis Pushkarev (zloirock.ru), 2025\u20132026 CoreJS Company (core-js.io). All rights reserved.",
+      license: "https://github.com/zloirock/core-js/blob/v3.49.0/LICENSE",
+      source: "https://github.com/zloirock/core-js"
+    });
+  }));
+  var require_shared = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var store = require_shared_store();
+    module.exports = function(key, value) {
+      return store[key] || (store[key] = value || {});
+    };
+  }));
+  var require_to_object = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var requireObjectCoercible = require_require_object_coercible();
+    var $Object = Object;
+    module.exports = function(argument) {
+      return $Object(requireObjectCoercible(argument));
+    };
+  }));
+  var require_has_own_property = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var uncurryThis = require_function_uncurry_this();
+    var toObject = require_to_object();
+    var hasOwnProperty = uncurryThis({}.hasOwnProperty);
+    module.exports = Object.hasOwn || function hasOwn(it, key) {
+      return hasOwnProperty(toObject(it), key);
+    };
+  }));
+  var require_uid = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var uncurryThis = require_function_uncurry_this();
+    var id = 0;
+    var postfix = Math.random();
+    var toString = uncurryThis(1.1.toString);
+    module.exports = function(key) {
+      return "Symbol(" + (key === void 0 ? "" : key) + ")_" + toString(++id + postfix, 36);
+    };
+  }));
+  var require_well_known_symbol = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var globalThis2 = require_global_this();
+    var shared = require_shared();
+    var hasOwn = require_has_own_property();
+    var uid = require_uid();
+    var NATIVE_SYMBOL = require_symbol_constructor_detection();
+    var USE_SYMBOL_AS_UID = require_use_symbol_as_uid();
+    var Symbol2 = globalThis2.Symbol;
+    var WellKnownSymbolsStore = shared("wks");
+    var createWellKnownSymbol = USE_SYMBOL_AS_UID ? Symbol2["for"] || Symbol2 : Symbol2 && Symbol2.withoutSetter || uid;
+    module.exports = function(name) {
+      if (!hasOwn(WellKnownSymbolsStore, name)) WellKnownSymbolsStore[name] = NATIVE_SYMBOL && hasOwn(Symbol2, name) ? Symbol2[name] : createWellKnownSymbol("Symbol." + name);
+      return WellKnownSymbolsStore[name];
+    };
+  }));
+  var require_to_primitive = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var call = require_function_call();
+    var isObject = require_is_object();
+    var isSymbol = require_is_symbol();
+    var getMethod = require_get_method();
+    var ordinaryToPrimitive = require_ordinary_to_primitive();
+    var wellKnownSymbol = require_well_known_symbol();
+    var $TypeError = TypeError;
+    var TO_PRIMITIVE = wellKnownSymbol("toPrimitive");
+    module.exports = function(input, pref) {
+      if (!isObject(input) || isSymbol(input)) return input;
+      var exoticToPrim = getMethod(input, TO_PRIMITIVE);
+      var result;
+      if (exoticToPrim) {
+        if (pref === void 0) pref = "default";
+        result = call(exoticToPrim, input, pref);
+        if (!isObject(result) || isSymbol(result)) return result;
+        throw new $TypeError("Can't convert object to primitive value");
+      }
+      if (pref === void 0) pref = "number";
+      return ordinaryToPrimitive(input, pref);
+    };
+  }));
+  var require_to_property_key = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var toPrimitive = require_to_primitive();
+    var isSymbol = require_is_symbol();
+    module.exports = function(argument) {
+      var key = toPrimitive(argument, "string");
+      return isSymbol(key) ? key : key + "";
+    };
+  }));
+  var require_document_create_element = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var globalThis2 = require_global_this();
+    var isObject = require_is_object();
+    var document2 = globalThis2.document;
+    var EXISTS = isObject(document2) && isObject(document2.createElement);
+    module.exports = function(it) {
+      return EXISTS ? document2.createElement(it) : {};
+    };
+  }));
+  var require_ie8_dom_define = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var DESCRIPTORS = require_descriptors();
+    var fails = require_fails();
+    var createElement = require_document_create_element();
+    module.exports = !DESCRIPTORS && !fails(function() {
+      return Object.defineProperty(createElement("div"), "a", { get: function() {
+        return 7;
+      } }).a !== 7;
+    });
+  }));
+  var require_object_get_own_property_descriptor = /* @__PURE__ */ __commonJSMin(((exports) => {
+    var DESCRIPTORS = require_descriptors();
+    var call = require_function_call();
+    var propertyIsEnumerableModule = require_object_property_is_enumerable();
+    var createPropertyDescriptor = require_create_property_descriptor();
+    var toIndexedObject = require_to_indexed_object();
+    var toPropertyKey = require_to_property_key();
+    var hasOwn = require_has_own_property();
+    var IE8_DOM_DEFINE = require_ie8_dom_define();
+    var $getOwnPropertyDescriptor = Object.getOwnPropertyDescriptor;
+    exports.f = DESCRIPTORS ? $getOwnPropertyDescriptor : function getOwnPropertyDescriptor(O, P) {
+      O = toIndexedObject(O);
+      P = toPropertyKey(P);
+      if (IE8_DOM_DEFINE) try {
+        return $getOwnPropertyDescriptor(O, P);
+      } catch (error) {
+      }
+      if (hasOwn(O, P)) return createPropertyDescriptor(!call(propertyIsEnumerableModule.f, O, P), O[P]);
+    };
+  }));
+  var require_is_forced = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var fails = require_fails();
+    var isCallable = require_is_callable();
+    var replacement = /#|\.prototype\./;
+    var isForced = function(feature, detection) {
+      var value = data2[normalize(feature)];
+      return value === POLYFILL ? true : value === NATIVE ? false : isCallable(detection) ? fails(detection) : !!detection;
+    };
+    var normalize = isForced.normalize = function(string) {
+      return String(string).replace(replacement, ".").toLowerCase();
+    };
+    var data2 = isForced.data = {};
+    var NATIVE = isForced.NATIVE = "N";
+    var POLYFILL = isForced.POLYFILL = "P";
+    module.exports = isForced;
+  }));
+  var require_function_bind_context = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var uncurryThis = require_function_uncurry_this_clause();
+    var aCallable = require_a_callable();
+    var NATIVE_BIND = require_function_bind_native();
+    var bind = uncurryThis(uncurryThis.bind);
+    module.exports = function(fn, that) {
+      aCallable(fn);
+      return that === void 0 ? fn : NATIVE_BIND ? bind(fn, that) : function() {
+        return fn.apply(that, arguments);
+      };
+    };
+  }));
+  var require_v8_prototype_define_bug = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var DESCRIPTORS = require_descriptors();
+    var fails = require_fails();
+    module.exports = DESCRIPTORS && fails(function() {
+      return Object.defineProperty(function() {
+      }, "prototype", {
+        value: 42,
+        writable: false
+      }).prototype !== 42;
+    });
+  }));
+  var require_an_object = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var isObject = require_is_object();
+    var $String = String;
+    var $TypeError = TypeError;
+    module.exports = function(argument) {
+      if (isObject(argument)) return argument;
+      throw new $TypeError($String(argument) + " is not an object");
+    };
+  }));
+  var require_object_define_property = /* @__PURE__ */ __commonJSMin(((exports) => {
+    var DESCRIPTORS = require_descriptors();
+    var IE8_DOM_DEFINE = require_ie8_dom_define();
+    var V8_PROTOTYPE_DEFINE_BUG = require_v8_prototype_define_bug();
+    var anObject = require_an_object();
+    var toPropertyKey = require_to_property_key();
+    var $TypeError = TypeError;
+    var $defineProperty = Object.defineProperty;
+    var $getOwnPropertyDescriptor = Object.getOwnPropertyDescriptor;
+    var ENUMERABLE = "enumerable";
+    var CONFIGURABLE = "configurable";
+    var WRITABLE = "writable";
+    exports.f = DESCRIPTORS ? V8_PROTOTYPE_DEFINE_BUG ? function defineProperty(O, P, Attributes) {
+      anObject(O);
+      P = toPropertyKey(P);
+      anObject(Attributes);
+      if (typeof O === "function" && P === "prototype" && "value" in Attributes && WRITABLE in Attributes && !Attributes[WRITABLE]) {
+        var current = $getOwnPropertyDescriptor(O, P);
+        if (current && current[WRITABLE]) {
+          O[P] = Attributes.value;
+          Attributes = {
+            configurable: CONFIGURABLE in Attributes ? Attributes[CONFIGURABLE] : current[CONFIGURABLE],
+            enumerable: ENUMERABLE in Attributes ? Attributes[ENUMERABLE] : current[ENUMERABLE],
+            writable: false
+          };
+        }
+      }
+      return $defineProperty(O, P, Attributes);
+    } : $defineProperty : function defineProperty(O, P, Attributes) {
+      anObject(O);
+      P = toPropertyKey(P);
+      anObject(Attributes);
+      if (IE8_DOM_DEFINE) try {
+        return $defineProperty(O, P, Attributes);
+      } catch (error) {
+      }
+      if ("get" in Attributes || "set" in Attributes) throw new $TypeError("Accessors not supported");
+      if ("value" in Attributes) O[P] = Attributes.value;
+      return O;
+    };
+  }));
+  var require_create_non_enumerable_property = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var DESCRIPTORS = require_descriptors();
+    var definePropertyModule = require_object_define_property();
+    var createPropertyDescriptor = require_create_property_descriptor();
+    module.exports = DESCRIPTORS ? function(object, key, value) {
+      return definePropertyModule.f(object, key, createPropertyDescriptor(1, value));
+    } : function(object, key, value) {
+      object[key] = value;
+      return object;
+    };
+  }));
+  var require_export = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var globalThis2 = require_global_this();
+    var apply = require_function_apply();
+    var uncurryThis = require_function_uncurry_this_clause();
+    var isCallable = require_is_callable();
+    var getOwnPropertyDescriptor = require_object_get_own_property_descriptor().f;
+    var isForced = require_is_forced();
+    var path = require_path();
+    var bind = require_function_bind_context();
+    var createNonEnumerableProperty = require_create_non_enumerable_property();
+    var hasOwn = require_has_own_property();
+    require_shared_store();
+    var wrapConstructor = function(NativeConstructor) {
+      var Wrapper = function(a, b, c) {
+        if (this instanceof Wrapper) {
+          switch (arguments.length) {
+            case 0:
+              return new NativeConstructor();
+            case 1:
+              return new NativeConstructor(a);
+            case 2:
+              return new NativeConstructor(a, b);
+          }
+          return new NativeConstructor(a, b, c);
+        }
+        return apply(NativeConstructor, this, arguments);
+      };
+      Wrapper.prototype = NativeConstructor.prototype;
+      return Wrapper;
+    };
+    module.exports = function(options, source) {
+      var TARGET = options.target;
+      var GLOBAL = options.global;
+      var STATIC = options.stat;
+      var PROTO = options.proto;
+      var nativeSource = GLOBAL ? globalThis2 : STATIC ? globalThis2[TARGET] : globalThis2[TARGET] && globalThis2[TARGET].prototype;
+      var target = GLOBAL ? path : path[TARGET] || createNonEnumerableProperty(path, TARGET, {})[TARGET];
+      var targetPrototype = target.prototype;
+      var FORCED, USE_NATIVE, VIRTUAL_PROTOTYPE;
+      var key, sourceProperty, targetProperty, nativeProperty, resultProperty, descriptor;
+      for (key in source) {
+        FORCED = isForced(GLOBAL ? key : TARGET + (STATIC ? "." : "#") + key, options.forced);
+        USE_NATIVE = !FORCED && nativeSource && hasOwn(nativeSource, key);
+        targetProperty = target[key];
+        if (USE_NATIVE) if (options.dontCallGetSet) {
+          descriptor = getOwnPropertyDescriptor(nativeSource, key);
+          nativeProperty = descriptor && descriptor.value;
+        } else nativeProperty = nativeSource[key];
+        sourceProperty = USE_NATIVE && nativeProperty ? nativeProperty : source[key];
+        if (!FORCED && !PROTO && typeof targetProperty == typeof sourceProperty) continue;
+        if (options.bind && USE_NATIVE) resultProperty = bind(sourceProperty, globalThis2);
+        else if (options.wrap && USE_NATIVE) resultProperty = wrapConstructor(sourceProperty);
+        else if (PROTO && isCallable(sourceProperty)) resultProperty = uncurryThis(sourceProperty);
+        else resultProperty = sourceProperty;
+        if (options.sham || sourceProperty && sourceProperty.sham || targetProperty && targetProperty.sham) createNonEnumerableProperty(resultProperty, "sham", true);
+        createNonEnumerableProperty(target, key, resultProperty);
+        if (PROTO) {
+          VIRTUAL_PROTOTYPE = TARGET + "Prototype";
+          if (!hasOwn(path, VIRTUAL_PROTOTYPE)) createNonEnumerableProperty(path, VIRTUAL_PROTOTYPE, {});
+          createNonEnumerableProperty(path[VIRTUAL_PROTOTYPE], key, sourceProperty);
+          if (options.real && targetPrototype && (FORCED || !targetPrototype[key])) createNonEnumerableProperty(targetPrototype, key, sourceProperty);
+        }
+      }
+    };
+  }));
+  var require_math_trunc = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var ceil = Math.ceil;
+    var floor = Math.floor;
+    module.exports = Math.trunc || function trunc(x2) {
+      var n = +x2;
+      return (n > 0 ? floor : ceil)(n);
+    };
+  }));
+  var require_to_integer_or_infinity = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var trunc = require_math_trunc();
+    module.exports = function(argument) {
+      var number = +argument;
+      return number !== number || number === 0 ? 0 : trunc(number);
+    };
+  }));
+  var require_to_absolute_index = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var toIntegerOrInfinity = require_to_integer_or_infinity();
+    var max = Math.max;
+    var min = Math.min;
+    module.exports = function(index, length2) {
+      var integer = toIntegerOrInfinity(index);
+      return integer < 0 ? max(integer + length2, 0) : min(integer, length2);
+    };
+  }));
+  var require_to_length = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var toIntegerOrInfinity = require_to_integer_or_infinity();
+    var min = Math.min;
+    module.exports = function(argument) {
+      var len = toIntegerOrInfinity(argument);
+      return len > 0 ? min(len, 9007199254740991) : 0;
+    };
+  }));
+  var require_length_of_array_like = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var toLength = require_to_length();
+    module.exports = function(obj) {
+      return toLength(obj.length);
+    };
+  }));
+  var require_array_includes = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var toIndexedObject = require_to_indexed_object();
+    var toAbsoluteIndex = require_to_absolute_index();
+    var lengthOfArrayLike = require_length_of_array_like();
+    var createMethod = function(IS_INCLUDES) {
+      return function($this, el, fromIndex) {
+        var O = toIndexedObject($this);
+        var length2 = lengthOfArrayLike(O);
+        if (length2 === 0) return !IS_INCLUDES && -1;
+        var index = toAbsoluteIndex(fromIndex, length2);
+        var value;
+        if (IS_INCLUDES && el !== el) while (length2 > index) {
+          value = O[index++];
+          if (value !== value) return true;
+        }
+        else for (; length2 > index; index++) if ((IS_INCLUDES || index in O) && O[index] === el) return IS_INCLUDES || index || 0;
+        return !IS_INCLUDES && -1;
+      };
+    };
+    module.exports = {
+      includes: createMethod(true),
+      indexOf: createMethod(false)
+    };
+  }));
+  var require_add_to_unscopables = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    module.exports = function() {
+    };
+  }));
+  var require_es_array_includes = /* @__PURE__ */ __commonJSMin((() => {
+    var $ = require_export();
+    var $includes = require_array_includes().includes;
+    var fails = require_fails();
+    var addToUnscopables = require_add_to_unscopables();
+    var BROKEN_ON_SPARSE = fails(function() {
+      return !Array(1).includes();
+    });
+    var BROKEN_ON_SPARSE_WITH_FROM_INDEX = fails(function() {
+      return [, 1].includes(void 0, 1);
+    });
+    $({
+      target: "Array",
+      proto: true,
+      forced: BROKEN_ON_SPARSE || BROKEN_ON_SPARSE_WITH_FROM_INDEX
+    }, { includes: function includes(el) {
+      return $includes(this, el, arguments.length > 1 ? arguments[1] : void 0);
+    } });
+    addToUnscopables("includes");
+  }));
+  var require_get_built_in_prototype_method = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var globalThis2 = require_global_this();
+    var path = require_path();
+    module.exports = function(CONSTRUCTOR, METHOD) {
+      var Namespace = path[CONSTRUCTOR + "Prototype"];
+      var pureMethod = Namespace && Namespace[METHOD];
+      if (pureMethod) return pureMethod;
+      var NativeConstructor = globalThis2[CONSTRUCTOR];
+      var NativePrototype = NativeConstructor && NativeConstructor.prototype;
+      return NativePrototype && NativePrototype[METHOD];
+    };
+  }));
+  var require_includes$3 = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    require_es_array_includes();
+    var getBuiltInPrototypeMethod = require_get_built_in_prototype_method();
+    module.exports = getBuiltInPrototypeMethod("Array", "includes");
+  }));
+  var require_is_regexp = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var isObject = require_is_object();
+    var classof = require_classof_raw();
+    var MATCH = require_well_known_symbol()("match");
+    module.exports = function(it) {
+      var isRegExp;
+      return isObject(it) && ((isRegExp = it[MATCH]) !== void 0 ? !!isRegExp : classof(it) === "RegExp");
+    };
+  }));
+  var require_not_a_regexp = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var isRegExp = require_is_regexp();
+    var $TypeError = TypeError;
+    module.exports = function(it) {
+      if (isRegExp(it)) throw new $TypeError("The method doesn't accept regular expressions");
+      return it;
+    };
+  }));
+  var require_to_string_tag_support = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var TO_STRING_TAG = require_well_known_symbol()("toStringTag");
+    var test = {};
+    test[TO_STRING_TAG] = "z";
+    module.exports = String(test) === "[object z]";
+  }));
+  var require_classof = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var TO_STRING_TAG_SUPPORT = require_to_string_tag_support();
+    var isCallable = require_is_callable();
+    var classofRaw = require_classof_raw();
+    var TO_STRING_TAG = require_well_known_symbol()("toStringTag");
+    var $Object = Object;
+    var CORRECT_ARGUMENTS = classofRaw(/* @__PURE__ */ (function() {
+      return arguments;
+    })()) === "Arguments";
+    var tryGet = function(it, key) {
+      try {
+        return it[key];
+      } catch (error) {
+      }
+    };
+    module.exports = TO_STRING_TAG_SUPPORT ? classofRaw : function(it) {
+      var O, tag, result;
+      return it === void 0 ? "Undefined" : it === null ? "Null" : typeof (tag = tryGet(O = $Object(it), TO_STRING_TAG)) == "string" ? tag : CORRECT_ARGUMENTS ? classofRaw(O) : (result = classofRaw(O)) === "Object" && isCallable(O.callee) ? "Arguments" : result;
+    };
+  }));
+  var require_to_string = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var classof = require_classof();
+    var $String = String;
+    module.exports = function(argument) {
+      if (classof(argument) === "Symbol") throw new TypeError("Cannot convert a Symbol value to a string");
+      return $String(argument);
+    };
+  }));
+  var require_correct_is_regexp_logic = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var MATCH = require_well_known_symbol()("match");
+    module.exports = function(METHOD_NAME) {
+      var regexp = /./;
+      try {
+        "/./"[METHOD_NAME](regexp);
+      } catch (error1) {
+        try {
+          regexp[MATCH] = false;
+          return "/./"[METHOD_NAME](regexp);
+        } catch (error2) {
+        }
+      }
+      return false;
+    };
+  }));
+  var require_es_string_includes = /* @__PURE__ */ __commonJSMin((() => {
+    var $ = require_export();
+    var uncurryThis = require_function_uncurry_this();
+    var notARegExp = require_not_a_regexp();
+    var requireObjectCoercible = require_require_object_coercible();
+    var toString = require_to_string();
+    var correctIsRegExpLogic = require_correct_is_regexp_logic();
+    var stringIndexOf = uncurryThis("".indexOf);
+    $({
+      target: "String",
+      proto: true,
+      forced: !correctIsRegExpLogic("includes")
+    }, { includes: function includes(searchString) {
+      return !!~stringIndexOf(toString(requireObjectCoercible(this)), toString(notARegExp(searchString)), arguments.length > 1 ? arguments[1] : void 0);
+    } });
+  }));
+  var require_includes$2 = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    require_es_string_includes();
+    var getBuiltInPrototypeMethod = require_get_built_in_prototype_method();
+    module.exports = getBuiltInPrototypeMethod("String", "includes");
+  }));
+  var require_includes$1 = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var isPrototypeOf = require_object_is_prototype_of();
+    var arrayMethod = require_includes$3();
+    var stringMethod = require_includes$2();
+    var ArrayPrototype = Array.prototype;
+    var StringPrototype = String.prototype;
+    module.exports = function(it) {
+      var own = it.includes;
+      if (it === ArrayPrototype || isPrototypeOf(ArrayPrototype, it) && own === ArrayPrototype.includes) return arrayMethod;
+      if (typeof it == "string" || it === StringPrototype || isPrototypeOf(StringPrototype, it) && own === StringPrototype.includes) return stringMethod;
+      return own;
+    };
+  }));
+  var require_includes = /* @__PURE__ */ __commonJSMin(((exports, module) => {
+    var parent = require_includes$1();
+    module.exports = parent;
+  }));
+  var import_includes = /* @__PURE__ */ __toESM(require_includes(), 1);
   function map(array2, block) {
     let i;
     const il = array2.length;
     const result = [];
-    for (i = 0; i < il; i++) {
-      result.push(block(array2[i]));
-    }
+    for (i = 0; i < il; i++) result.push(block(array2[i]));
     return result;
   }
   function filter(array2, block) {
     let i;
     const il = array2.length;
     const result = [];
-    for (i = 0; i < il; i++) {
-      if (block(array2[i])) {
-        result.push(array2[i]);
-      }
-    }
+    for (i = 0; i < il; i++) if (block(array2[i])) result.push(array2[i]);
     return result;
   }
   function radians(d) {
@@ -323,65 +1727,50 @@ var RoomPlan = (() => {
   function capitalize(s) {
     return s.charAt(0).toUpperCase() + s.slice(1);
   }
-  function proportionalSize(element, width4, height4, box) {
-    if (width4 == null || height4 == null) {
+  function proportionalSize(element, width2, height2, box) {
+    if (width2 == null || height2 == null) {
       box = box || element.bbox();
-      if (width4 == null) {
-        width4 = box.width / box.height * height4;
-      } else if (height4 == null) {
-        height4 = box.height / box.width * width4;
-      }
+      if (width2 == null) width2 = box.width / box.height * height2;
+      else if (height2 == null) height2 = box.height / box.width * width2;
     }
     return {
-      width: width4,
-      height: height4
+      width: width2,
+      height: height2
     };
   }
   function getOrigin(o, element) {
     const origin = o.origin;
     let ox = o.ox != null ? o.ox : o.originX != null ? o.originX : "center";
     let oy = o.oy != null ? o.oy : o.originY != null ? o.originY : "center";
-    if (origin != null) {
-      ;
-      [ox, oy] = Array.isArray(origin) ? origin : typeof origin === "object" ? [origin.x, origin.y] : [origin, origin];
-    }
+    if (origin != null) [ox, oy] = Array.isArray(origin) ? origin : typeof origin === "object" ? [origin.x, origin.y] : [origin, origin];
     const condX = typeof ox === "string";
     const condY = typeof oy === "string";
     if (condX || condY) {
-      const { height: height4, width: width4, x: x5, y: y5 } = element.bbox();
-      if (condX) {
-        ox = ox.includes("left") ? x5 : ox.includes("right") ? x5 + width4 : x5 + width4 / 2;
-      }
-      if (condY) {
-        oy = oy.includes("top") ? y5 : oy.includes("bottom") ? y5 + height4 : y5 + height4 / 2;
-      }
+      const { height: height2, width: width2, x: x2, y: y2 } = element.bbox();
+      if (condX) ox = (0, import_includes.default)(ox).call(ox, "left") ? x2 : (0, import_includes.default)(ox).call(ox, "right") ? x2 + width2 : x2 + width2 / 2;
+      if (condY) oy = (0, import_includes.default)(oy).call(oy, "top") ? y2 : (0, import_includes.default)(oy).call(oy, "bottom") ? y2 + height2 : y2 + height2 / 2;
     }
     return [ox, oy];
   }
-  var descriptiveElements = /* @__PURE__ */ new Set(["desc", "metadata", "title"]);
+  var descriptiveElements = /* @__PURE__ */ new Set([
+    "desc",
+    "metadata",
+    "title"
+  ]);
   var isDescriptive = (element) => descriptiveElements.has(element.nodeName);
   var writeDataToDom = (element, data2, defaults = {}) => {
     const cloned = { ...data2 };
-    for (const key in cloned) {
-      if (cloned[key].valueOf() === defaults[key]) {
-        delete cloned[key];
-      }
-    }
-    if (Object.keys(cloned).length) {
-      element.node.setAttribute("data-svgjs", JSON.stringify(cloned));
-    } else {
+    for (const key in cloned) if (cloned[key].valueOf() === defaults[key]) delete cloned[key];
+    if (Object.keys(cloned).length) element.node.setAttribute("data-svgjs", JSON.stringify(cloned));
+    else {
       element.node.removeAttribute("data-svgjs");
       element.node.removeAttribute("svgjs:data");
     }
   };
-
-  // node_modules/@svgdotjs/svg.js/src/modules/core/namespaces.js
   var svg = "http://www.w3.org/2000/svg";
   var html = "http://www.w3.org/1999/xhtml";
   var xmlns = "http://www.w3.org/2000/xmlns/";
   var xlink = "http://www.w3.org/1999/xlink";
-
-  // node_modules/@svgdotjs/svg.js/src/utils/window.js
   var globals = {
     window: typeof window === "undefined" ? null : window,
     document: typeof document === "undefined" ? null : document
@@ -389,20 +1778,8 @@ var RoomPlan = (() => {
   function getWindow() {
     return globals.window;
   }
-
-  // node_modules/@svgdotjs/svg.js/src/types/Base.js
   var Base = class {
-    // constructor (node/*, {extensions = []} */) {
-    //   // this.tags = []
-    //   //
-    //   // for (let extension of extensions) {
-    //   //   extension.setup.call(this, node)
-    //   //   this.tags.push(extension.name)
-    //   // }
-    // }
   };
-
-  // node_modules/@svgdotjs/svg.js/src/utils/adopter.js
   var elements = {};
   var root = "___SYMBOL___ROOT___";
   function create(name, ns = svg) {
@@ -410,15 +1787,9 @@ var RoomPlan = (() => {
   }
   function makeInstance(element, isHTML = false) {
     if (element instanceof Base) return element;
-    if (typeof element === "object") {
-      return adopter(element);
-    }
-    if (element == null) {
-      return new elements[root]();
-    }
-    if (typeof element === "string" && element.trim().charAt(0) !== "<") {
-      return adopter(globals.document.querySelector(element));
-    }
+    if (typeof element === "object") return adopter(element);
+    if (element == null) return new elements[root]();
+    if (typeof element === "string" && element.trim().charAt(0) !== "<") return adopter(globals.document.querySelector(element));
     const wrapper = isHTML ? globals.document.createElement("div") : create("svg");
     wrapper.innerHTML = element.trim();
     element = adopter(wrapper.firstElementChild);
@@ -431,15 +1802,10 @@ var RoomPlan = (() => {
   function adopt(node) {
     if (!node) return null;
     if (node.instance instanceof Base) return node.instance;
-    if (node.nodeName === "#document-fragment") {
-      return new elements.Fragment(node);
-    }
+    if (node.nodeName === "#document-fragment") return new elements.Fragment(node);
     let className = capitalize(node.nodeName || "Dom");
-    if (className === "LinearGradient" || className === "RadialGradient") {
-      className = "Gradient";
-    } else if (!elements[className]) {
-      className = "Dom";
-    }
+    if (className === "LinearGradient" || className === "RadialGradient") className = "Gradient";
+    else if (!elements[className]) className = "Dom";
     return new elements[className](node);
   }
   var adopter = adopt;
@@ -457,36 +1823,25 @@ var RoomPlan = (() => {
     return "Svgjs" + capitalize(name) + did++;
   }
   function assignNewId(node) {
-    for (let i = node.children.length - 1; i >= 0; i--) {
-      assignNewId(node.children[i]);
-    }
+    for (let i = node.children.length - 1; i >= 0; i--) assignNewId(node.children[i]);
     if (node.id) {
       node.id = eid(node.nodeName);
       return node;
     }
     return node;
   }
-  function extend(modules, methods3) {
+  function extend(modules, methods2) {
     let key, i;
     modules = Array.isArray(modules) ? modules : [modules];
-    for (i = modules.length - 1; i >= 0; i--) {
-      for (key in methods3) {
-        modules[i].prototype[key] = methods3[key];
-      }
-    }
+    for (i = modules.length - 1; i >= 0; i--) for (key in methods2) modules[i].prototype[key] = methods2[key];
   }
   function wrapWithAttrCheck(fn) {
     return function(...args) {
       const o = args[args.length - 1];
-      if (o && o.constructor === Object && !(o instanceof Array)) {
-        return fn.apply(this, args.slice(0, -1)).attr(o);
-      } else {
-        return fn.apply(this, args);
-      }
+      if (o && o.constructor === Object && !(o instanceof Array)) return fn.apply(this, args.slice(0, -1)).attr(o);
+      else return fn.apply(this, args);
     };
   }
-
-  // node_modules/@svgdotjs/svg.js/src/modules/optional/arrange.js
   function siblings() {
     return this.parent().children();
   }
@@ -501,24 +1856,20 @@ var RoomPlan = (() => {
   }
   function forward() {
     const i = this.position();
-    const p = this.parent();
-    p.add(this.remove(), i + 1);
+    this.parent().add(this.remove(), i + 1);
     return this;
   }
   function backward() {
     const i = this.position();
-    const p = this.parent();
-    p.add(this.remove(), i ? i - 1 : 0);
+    this.parent().add(this.remove(), i ? i - 1 : 0);
     return this;
   }
   function front() {
-    const p = this.parent();
-    p.add(this.remove());
+    this.parent().add(this.remove());
     return this;
   }
   function back() {
-    const p = this.parent();
-    p.add(this.remove(), 0);
+    this.parent().add(this.remove(), 0);
     return this;
   }
   function before(element) {
@@ -559,12 +1910,10 @@ var RoomPlan = (() => {
     insertBefore,
     insertAfter
   });
-
-  // node_modules/@svgdotjs/svg.js/src/modules/core/regex.js
   var numberAndUnit = /^([+-]?(\d+(\.\d*)?|\.\d+)(e[+-]?\d+)?)([a-z%]*)$/i;
   var hex = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i;
   var rgb = /rgb\((\d+),(\d+),(\d+)\)/;
-  var reference = /(#[a-z_][a-z0-9\-_]*)/i;
+  var reference = /^(#[^\s]+)$/;
   var transforms = /\)\s*,?\s*/;
   var whitespace = /\s/g;
   var isHex = /^#[a-f0-9]{3}$|^#[a-f0-9]{6}$/i;
@@ -574,8 +1923,6 @@ var RoomPlan = (() => {
   var isImage = /\.(jpg|jpeg|png|gif|svg)(\?[^=]+.*)?/i;
   var delimiter = /[\s,]+/;
   var isPathLetter = /[MLHVCSQTAZ]/i;
-
-  // node_modules/@svgdotjs/svg.js/src/modules/optional/class.js
   function classes() {
     const attr2 = this.attr("class");
     return attr2 == null ? [] : attr2.trim().split(delimiter);
@@ -592,14 +1939,9 @@ var RoomPlan = (() => {
     return this;
   }
   function removeClass(name) {
-    if (this.hasClass(name)) {
-      this.attr(
-        "class",
-        this.classes().filter(function(c) {
-          return c !== name;
-        }).join(" ")
-      );
-    }
+    if (this.hasClass(name)) this.attr("class", this.classes().filter(function(c) {
+      return c !== name;
+    }).join(" "));
     return this;
   }
   function toggleClass(name) {
@@ -612,45 +1954,31 @@ var RoomPlan = (() => {
     removeClass,
     toggleClass
   });
-
-  // node_modules/@svgdotjs/svg.js/src/modules/optional/css.js
+  var cssName = (name) => name.startsWith("--") ? name : unCamelCase(name);
   function css(style, val) {
     const ret = {};
     if (arguments.length === 0) {
-      this.node.style.cssText.split(/\s*;\s*/).filter(function(el) {
-        return !!el.length;
-      }).forEach(function(el) {
-        const t = el.split(/\s*:\s*/);
-        ret[t[0]] = t[1];
-      });
+      const declaration = this.node.style;
+      for (let i = 0; i < declaration.length; i++) {
+        const name = declaration.item(i);
+        const value = declaration.getPropertyValue(name);
+        const priority = declaration.getPropertyPriority(name);
+        ret[name] = priority ? `${value} !${priority}` : value;
+      }
       return ret;
     }
     if (arguments.length < 2) {
       if (Array.isArray(style)) {
         for (const name of style) {
-          const cased = name;
+          const cased = cssName(name);
           ret[name] = this.node.style.getPropertyValue(cased);
         }
         return ret;
       }
-      if (typeof style === "string") {
-        return this.node.style.getPropertyValue(style);
-      }
-      if (typeof style === "object") {
-        for (const name in style) {
-          this.node.style.setProperty(
-            name,
-            style[name] == null || isBlank.test(style[name]) ? "" : style[name]
-          );
-        }
-      }
+      if (typeof style === "string") return this.node.style.getPropertyValue(cssName(style));
+      if (typeof style === "object") for (const name in style) this.node.style.setProperty(cssName(name), style[name] == null || isBlank.test(style[name]) ? "" : style[name]);
     }
-    if (arguments.length === 2) {
-      this.node.style.setProperty(
-        style,
-        val == null || isBlank.test(val) ? "" : val
-      );
-    }
+    if (arguments.length === 2) this.node.style.setProperty(cssName(style), val == null || isBlank.test(val) ? "" : val);
     return this;
   }
   function show() {
@@ -668,74 +1996,41 @@ var RoomPlan = (() => {
     hide,
     visible
   });
-
-  // node_modules/@svgdotjs/svg.js/src/modules/optional/data.js
   function data(a, v, r) {
-    if (a == null) {
-      return this.data(
-        map(
-          filter(
-            this.node.attributes,
-            (el) => el.nodeName.indexOf("data-") === 0
-          ),
-          (el) => el.nodeName.slice(5)
-        )
-      );
-    } else if (a instanceof Array) {
+    if (a == null) return this.data(map(filter(this.node.attributes, (el) => el.nodeName.indexOf("data-") === 0), (el) => el.nodeName.slice(5)));
+    else if (a instanceof Array) {
       const data2 = {};
-      for (const key of a) {
-        data2[key] = this.data(key);
-      }
+      for (const key of a) data2[key] = this.data(key);
       return data2;
-    } else if (typeof a === "object") {
-      for (v in a) {
-        this.data(v, a[v]);
-      }
-    } else if (arguments.length < 2) {
-      try {
-        return JSON.parse(this.attr("data-" + a));
-      } catch (e) {
-        return this.attr("data-" + a);
-      }
-    } else {
-      this.attr(
-        "data-" + a,
-        v === null ? null : r === true || typeof v === "string" || typeof v === "number" ? v : JSON.stringify(v)
-      );
+    } else if (typeof a === "object") for (v in a) this.data(v, a[v]);
+    else if (arguments.length < 2) try {
+      return JSON.parse(this.attr("data-" + a));
+    } catch (e) {
+      return this.attr("data-" + a);
     }
+    else this.attr("data-" + a, v === null ? null : r === true || typeof v === "string" || typeof v === "number" ? v : JSON.stringify(v));
     return this;
   }
   registerMethods("Dom", { data });
-
-  // node_modules/@svgdotjs/svg.js/src/modules/optional/memory.js
   function remember(k, v) {
-    if (typeof arguments[0] === "object") {
-      for (const key in k) {
-        this.remember(key, k[key]);
-      }
-    } else if (arguments.length === 1) {
-      return this.memory()[k];
-    } else {
-      this.memory()[k] = v;
-    }
+    if (typeof arguments[0] === "object") for (const key in k) this.remember(key, k[key]);
+    else if (arguments.length === 1) return this.memory()[k];
+    else this.memory()[k] = v;
     return this;
   }
   function forget() {
-    if (arguments.length === 0) {
-      this._memory = {};
-    } else {
-      for (let i = arguments.length - 1; i >= 0; i--) {
-        delete this.memory()[arguments[i]];
-      }
-    }
+    if (arguments.length === 0) this._memory = {};
+    else for (let i = arguments.length - 1; i >= 0; i--) delete this.memory()[arguments[i]];
     return this;
   }
   function memory() {
     return this._memory = this._memory || {};
   }
-  registerMethods("Dom", { remember, forget, memory });
-
-  // node_modules/@svgdotjs/svg.js/src/types/Color.js
+  registerMethods("Dom", {
+    remember,
+    forget,
+    memory
+  });
   function sixDigitHex(hex2) {
     return hex2.length === 4 ? [
       "#",
@@ -748,30 +2043,62 @@ var RoomPlan = (() => {
     ].join("") : hex2;
   }
   function componentHex(component) {
-    const integer = Math.round(component);
-    const bounded = Math.max(0, Math.min(255, integer));
-    const hex2 = bounded.toString(16);
+    const hex2 = Math.max(0, Math.min(255, Math.round(component))).toString(16);
     return hex2.length === 1 ? "0" + hex2 : hex2;
   }
   function is(object, space) {
-    for (let i = space.length; i--; ) {
-      if (object[space[i]] == null) {
-        return false;
-      }
-    }
+    for (let i = space.length; i--; ) if (object[space[i]] == null) return false;
     return true;
   }
   function getParameters(a, b) {
-    const params = is(a, "rgb") ? { _a: a.r, _b: a.g, _c: a.b, _d: 0, space: "rgb" } : is(a, "xyz") ? { _a: a.x, _b: a.y, _c: a.z, _d: 0, space: "xyz" } : is(a, "hsl") ? { _a: a.h, _b: a.s, _c: a.l, _d: 0, space: "hsl" } : is(a, "lab") ? { _a: a.l, _b: a.a, _c: a.b, _d: 0, space: "lab" } : is(a, "lch") ? { _a: a.l, _b: a.c, _c: a.h, _d: 0, space: "lch" } : is(a, "cmyk") ? { _a: a.c, _b: a.m, _c: a.y, _d: a.k, space: "cmyk" } : { _a: 0, _b: 0, _c: 0, space: "rgb" };
+    const params = is(a, "rgb") ? {
+      _a: a.r,
+      _b: a.g,
+      _c: a.b,
+      _d: 0,
+      space: "rgb"
+    } : is(a, "xyz") ? {
+      _a: a.x,
+      _b: a.y,
+      _c: a.z,
+      _d: 0,
+      space: "xyz"
+    } : is(a, "hsl") ? {
+      _a: a.h,
+      _b: a.s,
+      _c: a.l,
+      _d: 0,
+      space: "hsl"
+    } : is(a, "lab") ? {
+      _a: a.l,
+      _b: a.a,
+      _c: a.b,
+      _d: 0,
+      space: "lab"
+    } : is(a, "lch") ? {
+      _a: a.l,
+      _b: a.c,
+      _c: a.h,
+      _d: 0,
+      space: "lch"
+    } : is(a, "cmyk") ? {
+      _a: a.c,
+      _b: a.m,
+      _c: a.y,
+      _d: a.k,
+      space: "cmyk"
+    } : {
+      _a: 0,
+      _b: 0,
+      _c: 0,
+      space: "rgb"
+    };
     params.space = b || params.space;
     return params;
   }
   function cieSpace(space) {
-    if (space === "lab" || space === "xyz" || space === "lch") {
-      return true;
-    } else {
-      return false;
-    }
+    if (space === "lab" || space === "xyz" || space === "lch") return true;
+    else return false;
   }
   function hueToRgb(p, q, t) {
     if (t < 0) t += 1;
@@ -781,88 +2108,78 @@ var RoomPlan = (() => {
     if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
     return p;
   }
-  var Color = class _Color {
+  var Color = class Color2 {
     constructor(...inputs) {
       this.init(...inputs);
     }
-    // Test if given value is a color
     static isColor(color) {
-      return color && (color instanceof _Color || this.isRgb(color) || this.test(color));
+      return color && (color instanceof Color2 || this.isRgb(color) || this.test(color));
     }
-    // Test if given value is an rgb object
     static isRgb(color) {
       return color && typeof color.r === "number" && typeof color.g === "number" && typeof color.b === "number";
     }
-    /*
-    Generating random colors
-    */
     static random(mode = "vibrant", t) {
       const { random, round, sin, PI: pi } = Math;
       if (mode === "vibrant") {
-        const l = (81 - 57) * random() + 57;
-        const c = (83 - 45) * random() + 45;
+        const l = 24 * random() + 57;
+        const c = 38 * random() + 45;
         const h = 360 * random();
-        const color = new _Color(l, c, h, "lch");
-        return color;
+        return new Color2(l, c, h, "lch");
       } else if (mode === "sine") {
         t = t == null ? random() : t;
         const r = round(80 * sin(2 * pi * t / 0.5 + 0.01) + 150);
         const g = round(50 * sin(2 * pi * t / 0.5 + 4.6) + 200);
         const b = round(100 * sin(2 * pi * t / 0.5 + 2.3) + 150);
-        const color = new _Color(r, g, b);
-        return color;
+        return new Color2(r, g, b);
       } else if (mode === "pastel") {
-        const l = (94 - 86) * random() + 86;
-        const c = (26 - 9) * random() + 9;
+        const l = 8 * random() + 86;
+        const c = 17 * random() + 9;
         const h = 360 * random();
-        const color = new _Color(l, c, h, "lch");
-        return color;
+        return new Color2(l, c, h, "lch");
       } else if (mode === "dark") {
         const l = 10 + 10 * random();
-        const c = (125 - 75) * random() + 86;
+        const c = 50 * random() + 86;
         const h = 360 * random();
-        const color = new _Color(l, c, h, "lch");
-        return color;
+        return new Color2(l, c, h, "lch");
       } else if (mode === "rgb") {
         const r = 255 * random();
         const g = 255 * random();
         const b = 255 * random();
-        const color = new _Color(r, g, b);
-        return color;
+        return new Color2(r, g, b);
       } else if (mode === "lab") {
         const l = 100 * random();
         const a = 256 * random() - 128;
         const b = 256 * random() - 128;
-        const color = new _Color(l, a, b, "lab");
-        return color;
+        return new Color2(l, a, b, "lab");
       } else if (mode === "grey") {
         const grey = 255 * random();
-        const color = new _Color(grey, grey, grey);
-        return color;
-      } else {
-        throw new Error("Unsupported random color mode");
-      }
+        return new Color2(grey, grey, grey);
+      } else throw new Error("Unsupported random color mode");
     }
-    // Test if given value is a color string
     static test(color) {
       return typeof color === "string" && (isHex.test(color) || isRgb.test(color));
     }
     cmyk() {
       const { _a, _b, _c } = this.rgb();
-      const [r, g, b] = [_a, _b, _c].map((v) => v / 255);
+      const [r, g, b] = [
+        _a,
+        _b,
+        _c
+      ].map((v) => v / 255);
       const k = Math.min(1 - r, 1 - g, 1 - b);
-      if (k === 1) {
-        return new _Color(0, 0, 0, 1, "cmyk");
-      }
+      if (k === 1) return new Color2(0, 0, 0, 1, "cmyk");
       const c = (1 - r - k) / (1 - k);
       const m = (1 - g - k) / (1 - k);
-      const y5 = (1 - b - k) / (1 - k);
-      const color = new _Color(c, m, y5, k, "cmyk");
-      return color;
+      const y2 = (1 - b - k) / (1 - k);
+      return new Color2(c, m, y2, k, "cmyk");
     }
     hsl() {
       const { _a, _b, _c } = this.rgb();
-      const [r, g, b] = [_a, _b, _c].map((v) => v / 255);
+      const [r, g, b] = [
+        _a,
+        _b,
+        _c
+      ].map((v) => v / 255);
       const max = Math.max(r, g, b);
       const min = Math.min(r, g, b);
       const l = (max + min) / 2;
@@ -870,48 +2187,88 @@ var RoomPlan = (() => {
       const delta = max - min;
       const s = isGrey ? 0 : l > 0.5 ? delta / (2 - max - min) : delta / (max + min);
       const h = isGrey ? 0 : max === r ? ((g - b) / delta + (g < b ? 6 : 0)) / 6 : max === g ? ((b - r) / delta + 2) / 6 : max === b ? ((r - g) / delta + 4) / 6 : 0;
-      const color = new _Color(360 * h, 100 * s, 100 * l, "hsl");
-      return color;
+      return new Color2(360 * h, 100 * s, 100 * l, "hsl");
     }
     init(a = 0, b = 0, c = 0, d = 0, space = "rgb") {
       a = !a ? 0 : a;
-      if (this.space) {
-        for (const component in this.space) {
-          delete this[this.space[component]];
-        }
-      }
+      if (this.space) for (const component in this.space) delete this[this.space[component]];
       if (typeof a === "number") {
         space = typeof d === "string" ? d : space;
         d = typeof d === "string" ? 0 : d;
-        Object.assign(this, { _a: a, _b: b, _c: c, _d: d, space });
+        Object.assign(this, {
+          _a: a,
+          _b: b,
+          _c: c,
+          _d: d,
+          space
+        });
       } else if (a instanceof Array) {
         this.space = b || (typeof a[3] === "string" ? a[3] : a[4]) || "rgb";
-        Object.assign(this, { _a: a[0], _b: a[1], _c: a[2], _d: a[3] || 0 });
+        Object.assign(this, {
+          _a: a[0],
+          _b: a[1],
+          _c: a[2],
+          _d: a[3] || 0
+        });
       } else if (a instanceof Object) {
         const values = getParameters(a, b);
         Object.assign(this, values);
-      } else if (typeof a === "string") {
-        if (isRgb.test(a)) {
-          const noWhitespace = a.replace(whitespace, "");
-          const [_a2, _b2, _c2] = rgb.exec(noWhitespace).slice(1, 4).map((v) => parseInt(v));
-          Object.assign(this, { _a: _a2, _b: _b2, _c: _c2, _d: 0, space: "rgb" });
-        } else if (isHex.test(a)) {
-          const hexParse = (v) => parseInt(v, 16);
-          const [, _a2, _b2, _c2] = hex.exec(sixDigitHex(a)).map(hexParse);
-          Object.assign(this, { _a: _a2, _b: _b2, _c: _c2, _d: 0, space: "rgb" });
-        } else throw Error("Unsupported string format, can't construct Color");
-      }
+      } else if (typeof a === "string") if (isRgb.test(a)) {
+        const noWhitespace = a.replace(whitespace, "");
+        const [_a2, _b2, _c2] = rgb.exec(noWhitespace).slice(1, 4).map((v) => parseInt(v));
+        Object.assign(this, {
+          _a: _a2,
+          _b: _b2,
+          _c: _c2,
+          _d: 0,
+          space: "rgb"
+        });
+      } else if (isHex.test(a)) {
+        const hexParse = (v) => parseInt(v, 16);
+        const [, _a2, _b2, _c2] = hex.exec(sixDigitHex(a)).map(hexParse);
+        Object.assign(this, {
+          _a: _a2,
+          _b: _b2,
+          _c: _c2,
+          _d: 0,
+          space: "rgb"
+        });
+      } else throw Error("Unsupported string format, can't construct Color");
       const { _a, _b, _c, _d } = this;
-      const components = this.space === "rgb" ? { r: _a, g: _b, b: _c } : this.space === "xyz" ? { x: _a, y: _b, z: _c } : this.space === "hsl" ? { h: _a, s: _b, l: _c } : this.space === "lab" ? { l: _a, a: _b, b: _c } : this.space === "lch" ? { l: _a, c: _b, h: _c } : this.space === "cmyk" ? { c: _a, m: _b, y: _c, k: _d } : {};
+      const components = this.space === "rgb" ? {
+        r: _a,
+        g: _b,
+        b: _c
+      } : this.space === "xyz" ? {
+        x: _a,
+        y: _b,
+        z: _c
+      } : this.space === "hsl" ? {
+        h: _a,
+        s: _b,
+        l: _c
+      } : this.space === "lab" ? {
+        l: _a,
+        a: _b,
+        b: _c
+      } : this.space === "lch" ? {
+        l: _a,
+        c: _b,
+        h: _c
+      } : this.space === "cmyk" ? {
+        c: _a,
+        m: _b,
+        y: _c,
+        k: _d
+      } : {};
       Object.assign(this, components);
     }
     lab() {
-      const { x: x5, y: y5, z } = this.xyz();
-      const l = 116 * y5 - 16;
-      const a = 500 * (x5 - y5);
-      const b = 200 * (y5 - z);
-      const color = new _Color(l, a, b, "lab");
-      return color;
+      const { x: x2, y: y2, z } = this.xyz();
+      const l = 116 * y2 - 16;
+      const a = 500 * (x2 - y2);
+      const b = 200 * (y2 - z);
+      return new Color2(l, a, b, "lab");
     }
     lch() {
       const { l, a, b } = this.lab();
@@ -921,17 +2278,12 @@ var RoomPlan = (() => {
         h *= -1;
         h = 360 - h;
       }
-      const color = new _Color(l, c, h, "lch");
-      return color;
+      return new Color2(l, c, h, "lch");
     }
-    /*
-    Conversion Methods
-    */
     rgb() {
-      if (this.space === "rgb") {
-        return this;
-      } else if (cieSpace(this.space)) {
-        let { x: x5, y: y5, z } = this;
+      if (this.space === "rgb") return this;
+      else if (cieSpace(this.space)) {
+        let { x: x2, y: y2, z } = this;
         if (this.space === "lab" || this.space === "lch") {
           let { l, a, b: b2 } = this;
           if (this.space === "lch") {
@@ -946,20 +2298,19 @@ var RoomPlan = (() => {
           const ct = 16 / 116;
           const mx = 8856e-6;
           const nm = 7.787;
-          x5 = 0.95047 * (xL ** 3 > mx ? xL ** 3 : (xL - ct) / nm);
-          y5 = 1 * (yL ** 3 > mx ? yL ** 3 : (yL - ct) / nm);
+          x2 = 0.95047 * (xL ** 3 > mx ? xL ** 3 : (xL - ct) / nm);
+          y2 = 1 * (yL ** 3 > mx ? yL ** 3 : (yL - ct) / nm);
           z = 1.08883 * (zL ** 3 > mx ? zL ** 3 : (zL - ct) / nm);
         }
-        const rU = x5 * 3.2406 + y5 * -1.5372 + z * -0.4986;
-        const gU = x5 * -0.9689 + y5 * 1.8758 + z * 0.0415;
-        const bU = x5 * 0.0557 + y5 * -0.204 + z * 1.057;
+        const rU = x2 * 3.2406 + y2 * -1.5372 + z * -0.4986;
+        const gU = x2 * -0.9689 + y2 * 1.8758 + z * 0.0415;
+        const bU = x2 * 0.0557 + y2 * -0.204 + z * 1.057;
         const pow = Math.pow;
         const bd = 31308e-7;
         const r = rU > bd ? 1.055 * pow(rU, 1 / 2.4) - 0.055 : 12.92 * rU;
         const g = gU > bd ? 1.055 * pow(gU, 1 / 2.4) - 0.055 : 12.92 * gU;
         const b = bU > bd ? 1.055 * pow(bU, 1 / 2.4) - 0.055 : 12.92 * bU;
-        const color = new _Color(255 * r, 255 * g, 255 * b);
-        return color;
+        return new Color2(255 * r, 255 * g, 255 * b);
       } else if (this.space === "hsl") {
         let { h, s, l } = this;
         h /= 360;
@@ -967,30 +2318,31 @@ var RoomPlan = (() => {
         l /= 100;
         if (s === 0) {
           l *= 255;
-          const color2 = new _Color(l, l, l);
-          return color2;
+          return new Color2(l, l, l);
         }
         const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
         const p = 2 * l - q;
         const r = 255 * hueToRgb(p, q, h + 1 / 3);
         const g = 255 * hueToRgb(p, q, h);
         const b = 255 * hueToRgb(p, q, h - 1 / 3);
-        const color = new _Color(r, g, b);
-        return color;
+        return new Color2(r, g, b);
       } else if (this.space === "cmyk") {
-        const { c, m, y: y5, k } = this;
+        const { c, m, y: y2, k } = this;
         const r = 255 * (1 - Math.min(1, c * (1 - k) + k));
         const g = 255 * (1 - Math.min(1, m * (1 - k) + k));
-        const b = 255 * (1 - Math.min(1, y5 * (1 - k) + k));
-        const color = new _Color(r, g, b);
-        return color;
-      } else {
-        return this;
-      }
+        const b = 255 * (1 - Math.min(1, y2 * (1 - k) + k));
+        return new Color2(r, g, b);
+      } else return this;
     }
     toArray() {
       const { _a, _b, _c, _d, space } = this;
-      return [_a, _b, _c, _d, space];
+      return [
+        _a,
+        _b,
+        _c,
+        _d,
+        space
+      ];
     }
     toHex() {
       const [r, g, b] = this._clamped().map(componentHex);
@@ -998,54 +2350,62 @@ var RoomPlan = (() => {
     }
     toRgb() {
       const [rV, gV, bV] = this._clamped();
-      const string = `rgb(${rV},${gV},${bV})`;
-      return string;
+      return `rgb(${rV},${gV},${bV})`;
     }
     toString() {
       return this.toHex();
     }
     xyz() {
       const { _a: r255, _b: g255, _c: b255 } = this.rgb();
-      const [r, g, b] = [r255, g255, b255].map((v) => v / 255);
+      const [r, g, b] = [
+        r255,
+        g255,
+        b255
+      ].map((v) => v / 255);
       const rL = r > 0.04045 ? Math.pow((r + 0.055) / 1.055, 2.4) : r / 12.92;
       const gL = g > 0.04045 ? Math.pow((g + 0.055) / 1.055, 2.4) : g / 12.92;
       const bL = b > 0.04045 ? Math.pow((b + 0.055) / 1.055, 2.4) : b / 12.92;
       const xU = (rL * 0.4124 + gL * 0.3576 + bL * 0.1805) / 0.95047;
       const yU = (rL * 0.2126 + gL * 0.7152 + bL * 0.0722) / 1;
       const zU = (rL * 0.0193 + gL * 0.1192 + bL * 0.9505) / 1.08883;
-      const x5 = xU > 8856e-6 ? Math.pow(xU, 1 / 3) : 7.787 * xU + 16 / 116;
-      const y5 = yU > 8856e-6 ? Math.pow(yU, 1 / 3) : 7.787 * yU + 16 / 116;
+      const x2 = xU > 8856e-6 ? Math.pow(xU, 1 / 3) : 7.787 * xU + 16 / 116;
+      const y2 = yU > 8856e-6 ? Math.pow(yU, 1 / 3) : 7.787 * yU + 16 / 116;
       const z = zU > 8856e-6 ? Math.pow(zU, 1 / 3) : 7.787 * zU + 16 / 116;
-      const color = new _Color(x5, y5, z, "xyz");
-      return color;
+      return new Color2(x2, y2, z, "xyz");
     }
-    /*
-    Input and Output methods
-    */
     _clamped() {
       const { _a, _b, _c } = this.rgb();
       const { max, min, round } = Math;
       const format = (v) => max(0, min(round(v), 255));
-      return [_a, _b, _c].map(format);
+      return [
+        _a,
+        _b,
+        _c
+      ].map(format);
     }
-    /*
-    Constructing colors
-    */
   };
-
-  // node_modules/@svgdotjs/svg.js/src/types/Point.js
-  var Point = class _Point {
-    // Initialize
+  var Point3 = class Point4 {
     constructor(...args) {
       this.init(...args);
     }
-    // Clone point
     clone() {
-      return new _Point(this);
+      return new Point4(this);
     }
-    init(x5, y5) {
-      const base = { x: 0, y: 0 };
-      const source = Array.isArray(x5) ? { x: x5[0], y: x5[1] } : typeof x5 === "object" ? { x: x5.x, y: x5.y } : { x: x5, y: y5 };
+    init(x2, y2) {
+      const base = {
+        x: 0,
+        y: 0
+      };
+      const source = Array.isArray(x2) ? {
+        x: x2[0],
+        y: x2[1]
+      } : typeof x2 === "object" ? {
+        x: x2.x,
+        y: x2.y
+      } : {
+        x: x2,
+        y: y2
+      };
       this.x = source.x == null ? base.x : source.x;
       this.y = source.y == null ? base.y : source.y;
       return this;
@@ -1056,26 +2416,21 @@ var RoomPlan = (() => {
     transform(m) {
       return this.clone().transformO(m);
     }
-    // Transform point with matrix
     transformO(m) {
-      if (!Matrix.isMatrixLike(m)) {
-        m = new Matrix(m);
-      }
-      const { x: x5, y: y5 } = this;
-      this.x = m.a * x5 + m.c * y5 + m.e;
-      this.y = m.b * x5 + m.d * y5 + m.f;
+      if (!Matrix.isMatrixLike(m)) m = new Matrix(m);
+      const { x: x2, y: y2 } = this;
+      this.x = m.a * x2 + m.c * y2 + m.e;
+      this.y = m.b * x2 + m.d * y2 + m.f;
       return this;
     }
   };
-  function point(x5, y5) {
-    return new Point(x5, y5).transformO(this.screenCTM().inverseO());
+  function point(x2, y2) {
+    return new Point3(x2, y2).transformO(this.screenCTM().inverseO());
   }
-
-  // node_modules/@svgdotjs/svg.js/src/types/Matrix.js
   function closeEnough(a, b, threshold) {
     return Math.abs(b - a) < (threshold || 1e-6);
   }
-  var Matrix = class _Matrix {
+  var Matrix = class Matrix2 {
     constructor(...args) {
       this.init(...args);
     }
@@ -1089,30 +2444,16 @@ var RoomPlan = (() => {
       const scaleY = o.scale && o.scale.length ? o.scale[1] * flipY : isFinite(o.scale) ? o.scale * flipY : isFinite(o.scaleY) ? o.scaleY * flipY : flipY;
       const shear = o.shear || 0;
       const theta = o.rotate || o.theta || 0;
-      const origin = new Point(
-        o.origin || o.around || o.ox || o.originX,
-        o.oy || o.originY
-      );
+      const origin = new Point3(o.origin || o.around || o.ox || o.originX, o.oy || o.originY);
       const ox = origin.x;
       const oy = origin.y;
-      const position2 = new Point(
-        o.position || o.px || o.positionX || NaN,
-        o.py || o.positionY || NaN
-      );
+      const position2 = new Point3(o.position ?? o.px ?? o.positionX ?? NaN, o.py ?? o.positionY ?? NaN);
       const px = position2.x;
       const py = position2.y;
-      const translate = new Point(
-        o.translate || o.tx || o.translateX,
-        o.ty || o.translateY
-      );
+      const translate = new Point3(o.translate || o.tx || o.translateX, o.ty || o.translateY);
       const tx = translate.x;
       const ty = translate.y;
-      const relative = new Point(
-        o.relative || o.rx || o.relativeX,
-        o.ry || o.relativeY
-      );
-      const rx2 = relative.x;
-      const ry2 = relative.y;
+      const relative = new Point3(o.relative || o.rx || o.relativeX, o.ry || o.relativeY);
       return {
         scaleX,
         scaleY,
@@ -1120,8 +2461,8 @@ var RoomPlan = (() => {
         skewY,
         shear,
         theta,
-        rx: rx2,
-        ry: ry2,
+        rx: relative.x,
+        ry: relative.y,
         tx,
         ty,
         ox,
@@ -1131,12 +2472,18 @@ var RoomPlan = (() => {
       };
     }
     static fromArray(a) {
-      return { a: a[0], b: a[1], c: a[2], d: a[3], e: a[4], f: a[5] };
+      return {
+        a: a[0],
+        b: a[1],
+        c: a[2],
+        d: a[3],
+        e: a[4],
+        f: a[5]
+      };
     }
     static isMatrixLike(o) {
       return o.a != null || o.b != null || o.c != null || o.d != null || o.e != null || o.f != null;
     }
-    // left matrix, right matrix, target matrix which is overwritten
     static matrixMultiply(l, r, o) {
       const a = l.a * r.a + l.c * r.b;
       const b = l.b * r.a + l.d * r.b;
@@ -1152,21 +2499,18 @@ var RoomPlan = (() => {
       o.f = f;
       return o;
     }
-    around(cx3, cy3, matrix) {
-      return this.clone().aroundO(cx3, cy3, matrix);
+    around(cx2, cy2, matrix) {
+      return this.clone().aroundO(cx2, cy2, matrix);
     }
-    // Transform around a center point
-    aroundO(cx3, cy3, matrix) {
-      const dx2 = cx3 || 0;
-      const dy2 = cy3 || 0;
+    aroundO(cx2, cy2, matrix) {
+      const dx2 = cx2 || 0;
+      const dy2 = cy2 || 0;
       return this.translateO(-dx2, -dy2).lmultiplyO(matrix).translateO(dx2, dy2);
     }
-    // Clones this matrix
     clone() {
-      return new _Matrix(this);
+      return new Matrix2(this);
     }
-    // Decomposes this matrix into its affine parameters
-    decompose(cx3 = 0, cy3 = 0) {
+    decompose(cx2 = 0, cy2 = 0) {
       const a = this.a;
       const b = this.b;
       const c = this.c;
@@ -1178,23 +2522,16 @@ var RoomPlan = (() => {
       const sx = ccw * Math.sqrt(a * a + b * b);
       const thetaRad = Math.atan2(ccw * b, ccw * a);
       const theta = 180 / Math.PI * thetaRad;
-      const ct = Math.cos(thetaRad);
-      const st = Math.sin(thetaRad);
       const lam = (a * c + b * d) / determinant;
-      const sy = c * sx / (lam * a - b) || d * sx / (lam * b + a);
-      const tx = e - cx3 + cx3 * ct * sx + cy3 * (lam * ct * sx - st * sy);
-      const ty = f - cy3 + cx3 * st * sx + cy3 * (lam * st * sx + ct * sy);
       return {
-        // Return the affine parameters
         scaleX: sx,
-        scaleY: sy,
+        scaleY: c * sx / (lam * a - b) || d * sx / (lam * b + a),
         shear: lam,
         rotate: theta,
-        translateX: tx,
-        translateY: ty,
-        originX: cx3,
-        originY: cy3,
-        // Return the matrix parameters
+        translateX: e - cx2 + cx2 * a + cy2 * c,
+        translateY: f - cy2 + cx2 * b + cy2 * d,
+        originX: cx2,
+        originY: cy2,
         a: this.a,
         b: this.b,
         c: this.c,
@@ -1203,23 +2540,27 @@ var RoomPlan = (() => {
         f: this.f
       };
     }
-    // Check if two matrices are equal
     equals(other) {
       if (other === this) return true;
-      const comp = new _Matrix(other);
+      const comp = new Matrix2(other);
       return closeEnough(this.a, comp.a) && closeEnough(this.b, comp.b) && closeEnough(this.c, comp.c) && closeEnough(this.d, comp.d) && closeEnough(this.e, comp.e) && closeEnough(this.f, comp.f);
     }
-    // Flip matrix on x or y, at a given offset
     flip(axis, around) {
       return this.clone().flipO(axis, around);
     }
     flipO(axis, around) {
       return axis === "x" ? this.scaleO(-1, 1, around, 0) : axis === "y" ? this.scaleO(1, -1, 0, around) : this.scaleO(-1, -1, axis, around || axis);
     }
-    // Initialize
     init(source) {
-      const base = _Matrix.fromArray([1, 0, 0, 1, 0, 0]);
-      source = source instanceof Element ? source.matrixify() : typeof source === "string" ? _Matrix.fromArray(source.split(delimiter).map(parseFloat)) : Array.isArray(source) ? _Matrix.fromArray(source) : typeof source === "object" && _Matrix.isMatrixLike(source) ? source : typeof source === "object" ? new _Matrix().transform(source) : arguments.length === 6 ? _Matrix.fromArray([].slice.call(arguments)) : base;
+      const base = Matrix2.fromArray([
+        1,
+        0,
+        0,
+        1,
+        0,
+        0
+      ]);
+      source = source instanceof Element ? source.matrixify() : typeof source === "string" ? Matrix2.fromArray(source.split(delimiter).map(parseFloat)) : Array.isArray(source) ? Matrix2.fromArray(source) : typeof source === "object" && Matrix2.isMatrixLike(source) ? source : typeof source === "object" ? new Matrix2().transform(source) : arguments.length === 6 ? Matrix2.fromArray([].slice.call(arguments)) : base;
       this.a = source.a != null ? source.a : base.a;
       this.b = source.b != null ? source.b : base.b;
       this.c = source.c != null ? source.c : base.c;
@@ -1231,7 +2572,6 @@ var RoomPlan = (() => {
     inverse() {
       return this.clone().inverseO();
     }
-    // Inverses matrix
     inverseO() {
       const a = this.a;
       const b = this.b;
@@ -1260,23 +2600,21 @@ var RoomPlan = (() => {
     }
     lmultiplyO(matrix) {
       const r = this;
-      const l = matrix instanceof _Matrix ? matrix : new _Matrix(matrix);
-      return _Matrix.matrixMultiply(l, r, this);
+      const l = matrix instanceof Matrix2 ? matrix : new Matrix2(matrix);
+      return Matrix2.matrixMultiply(l, r, this);
     }
-    // Left multiplies by the given matrix
     multiply(matrix) {
       return this.clone().multiplyO(matrix);
     }
     multiplyO(matrix) {
       const l = this;
-      const r = matrix instanceof _Matrix ? matrix : new _Matrix(matrix);
-      return _Matrix.matrixMultiply(l, r, this);
+      const r = matrix instanceof Matrix2 ? matrix : new Matrix2(matrix);
+      return Matrix2.matrixMultiply(l, r, this);
     }
-    // Rotate matrix
-    rotate(r, cx3, cy3) {
-      return this.clone().rotateO(r, cx3, cy3);
+    rotate(r, cx2, cy2) {
+      return this.clone().rotateO(r, cx2, cy2);
     }
-    rotateO(r, cx3 = 0, cy3 = 0) {
+    rotateO(r, cx2 = 0, cy2 = 0) {
       r = radians(r);
       const cos = Math.cos(r);
       const sin = Math.sin(r);
@@ -1285,91 +2623,87 @@ var RoomPlan = (() => {
       this.b = b * cos + a * sin;
       this.c = c * cos - d * sin;
       this.d = d * cos + c * sin;
-      this.e = e * cos - f * sin + cy3 * sin - cx3 * cos + cx3;
-      this.f = f * cos + e * sin - cx3 * sin - cy3 * cos + cy3;
+      this.e = e * cos - f * sin + cy2 * sin - cx2 * cos + cx2;
+      this.f = f * cos + e * sin - cx2 * sin - cy2 * cos + cy2;
       return this;
     }
-    // Scale matrix
     scale() {
       return this.clone().scaleO(...arguments);
     }
-    scaleO(x5, y5 = x5, cx3 = 0, cy3 = 0) {
+    scaleO(x2, y2 = x2, cx2 = 0, cy2 = 0) {
       if (arguments.length === 3) {
-        cy3 = cx3;
-        cx3 = y5;
-        y5 = x5;
+        cy2 = cx2;
+        cx2 = y2;
+        y2 = x2;
       }
       const { a, b, c, d, e, f } = this;
-      this.a = a * x5;
-      this.b = b * y5;
-      this.c = c * x5;
-      this.d = d * y5;
-      this.e = e * x5 - cx3 * x5 + cx3;
-      this.f = f * y5 - cy3 * y5 + cy3;
+      this.a = a * x2;
+      this.b = b * y2;
+      this.c = c * x2;
+      this.d = d * y2;
+      this.e = e * x2 - cx2 * x2 + cx2;
+      this.f = f * y2 - cy2 * y2 + cy2;
       return this;
     }
-    // Shear matrix
-    shear(a, cx3, cy3) {
-      return this.clone().shearO(a, cx3, cy3);
+    shear(a, cx2, cy2) {
+      return this.clone().shearO(a, cx2, cy2);
     }
-    // eslint-disable-next-line no-unused-vars
-    shearO(lx, cx3 = 0, cy3 = 0) {
+    shearO(lx, cx2 = 0, cy2 = 0) {
       const { a, b, c, d, e, f } = this;
       this.a = a + b * lx;
       this.c = c + d * lx;
-      this.e = e + f * lx - cy3 * lx;
+      this.e = e + f * lx - cy2 * lx;
       return this;
     }
-    // Skew Matrix
     skew() {
       return this.clone().skewO(...arguments);
     }
-    skewO(x5, y5 = x5, cx3 = 0, cy3 = 0) {
+    skewO(x2, y2 = x2, cx2 = 0, cy2 = 0) {
       if (arguments.length === 3) {
-        cy3 = cx3;
-        cx3 = y5;
-        y5 = x5;
+        cy2 = cx2;
+        cx2 = y2;
+        y2 = x2;
       }
-      x5 = radians(x5);
-      y5 = radians(y5);
-      const lx = Math.tan(x5);
-      const ly = Math.tan(y5);
+      x2 = radians(x2);
+      y2 = radians(y2);
+      const lx = Math.tan(x2);
+      const ly = Math.tan(y2);
       const { a, b, c, d, e, f } = this;
       this.a = a + b * lx;
       this.b = b + a * ly;
       this.c = c + d * lx;
       this.d = d + c * ly;
-      this.e = e + f * lx - cy3 * lx;
-      this.f = f + e * ly - cx3 * ly;
+      this.e = e + f * lx - cy2 * lx;
+      this.f = f + e * ly - cx2 * ly;
       return this;
     }
-    // SkewX
-    skewX(x5, cx3, cy3) {
-      return this.skew(x5, 0, cx3, cy3);
+    skewX(x2, cx2, cy2) {
+      return this.skew(x2, 0, cx2, cy2);
     }
-    // SkewY
-    skewY(y5, cx3, cy3) {
-      return this.skew(0, y5, cx3, cy3);
+    skewY(y2, cx2, cy2) {
+      return this.skew(0, y2, cx2, cy2);
     }
     toArray() {
-      return [this.a, this.b, this.c, this.d, this.e, this.f];
+      return [
+        this.a,
+        this.b,
+        this.c,
+        this.d,
+        this.e,
+        this.f
+      ];
     }
-    // Convert matrix to string
     toString() {
       return "matrix(" + this.a + "," + this.b + "," + this.c + "," + this.d + "," + this.e + "," + this.f + ")";
     }
-    // Transform a matrix into another matrix by manipulating the space
     transform(o) {
-      if (_Matrix.isMatrixLike(o)) {
-        const matrix = new _Matrix(o);
-        return matrix.multiplyO(this);
-      }
-      const t = _Matrix.formatTransforms(o);
+      if (Matrix2.isMatrixLike(o)) return new Matrix2(o).multiplyO(this);
+      const t = Matrix2.formatTransforms(o);
       const current = this;
-      const { x: ox, y: oy } = new Point(t.ox, t.oy).transform(current);
-      const transformer = new _Matrix().translateO(t.rx, t.ry).lmultiplyO(current).translateO(-ox, -oy).scaleO(t.scaleX, t.scaleY).skewO(t.skewX, t.skewY).shearO(t.shear).rotateO(t.theta).translateO(ox, oy);
+      const { x: ox, y: oy } = new Point3(t.ox, t.oy).transform(current);
+      const transformer = new Matrix2().translateO(t.rx, t.ry).lmultiplyO(current).translateO(-ox, -oy).scaleO(t.scaleX, t.scaleY).skewO(t.skewX, t.skewY).shearO(t.shear).rotateO(t.theta).translateO(ox, oy);
       if (isFinite(t.px) || isFinite(t.py)) {
-        const origin = new Point(ox, oy).transform(transformer);
+        const origin = new Point3(ox, oy).transform(transformer);
         const dx2 = isFinite(t.px) ? t.px - origin.x : 0;
         const dy2 = isFinite(t.py) ? t.py - origin.y : 0;
         transformer.translateO(dx2, dy2);
@@ -1377,13 +2711,12 @@ var RoomPlan = (() => {
       transformer.translateO(t.tx, t.ty);
       return transformer;
     }
-    // Translate matrix
-    translate(x5, y5) {
-      return this.clone().translateO(x5, y5);
+    translate(x2, y2) {
+      return this.clone().translateO(x2, y2);
     }
-    translateO(x5, y5) {
-      this.e += x5 || 0;
-      this.f += y5 || 0;
+    translateO(x2, y2) {
+      this.e += x2 || 0;
+      this.f += y2 || 0;
       return this;
     }
     valueOf() {
@@ -1410,17 +2743,13 @@ var RoomPlan = (() => {
       }
       return new Matrix(this.node.getScreenCTM());
     } catch (e) {
-      console.warn(
-        `Cannot get CTM from SVG node ${this.node.nodeName}. Is the element rendered?`
-      );
+      console.warn(`Cannot get CTM from SVG node ${this.node.nodeName}. Is the element rendered?`);
       return new Matrix();
     }
   }
   register(Matrix, "Matrix");
-
-  // node_modules/@svgdotjs/svg.js/src/modules/core/parser.js
   function parser() {
-    if (!parser.nodes) {
+    if (!parser.nodes || parser.nodes.svg.node.ownerDocument !== globals.document) {
       const svg2 = makeInstance().size(2, 0);
       svg2.node.style.cssText = [
         "opacity: 0",
@@ -1431,45 +2760,44 @@ var RoomPlan = (() => {
       ].join(";");
       svg2.attr("focusable", "false");
       svg2.attr("aria-hidden", "true");
-      const path = svg2.path().node;
-      parser.nodes = { svg: svg2, path };
+      parser.nodes = {
+        svg: svg2,
+        path: svg2.path().node
+      };
     }
-    if (!parser.nodes.svg.node.parentNode) {
-      const b = globals.document.body || globals.document.documentElement;
-      parser.nodes.svg.addTo(b);
-    }
+    if (!parser.nodes.svg.node.parentNode) parser.nodes.svg.addTo(globals.document.body || globals.document.documentElement);
     return parser.nodes;
   }
-
-  // node_modules/@svgdotjs/svg.js/src/types/Box.js
   function isNulledBox(box) {
     return !box.width && !box.height && !box.x && !box.y;
   }
   function domContains(node) {
     return node === globals.document || (globals.document.documentElement.contains || function(node2) {
-      while (node2.parentNode) {
-        node2 = node2.parentNode;
-      }
+      while (node2.parentNode) node2 = node2.parentNode;
       return node2 === globals.document;
     }).call(globals.document.documentElement, node);
   }
-  var Box = class _Box {
+  var Box = class Box2 {
     constructor(...args) {
       this.init(...args);
     }
     addOffset() {
       this.x += globals.window.pageXOffset;
       this.y += globals.window.pageYOffset;
-      return new _Box(this);
+      return new Box2(this);
     }
     init(source) {
-      const base = [0, 0, 0, 0];
       source = typeof source === "string" ? source.split(delimiter).map(parseFloat) : Array.isArray(source) ? source : typeof source === "object" ? [
         source.left != null ? source.left : source.x,
         source.top != null ? source.top : source.y,
         source.width,
         source.height
-      ] : arguments.length === 4 ? [].slice.call(arguments) : base;
+      ] : arguments.length === 4 ? [].slice.call(arguments) : [
+        0,
+        0,
+        0,
+        0
+      ];
       this.x = source[0] || 0;
       this.y = source[1] || 0;
       this.width = this.w = source[2] || 0;
@@ -1483,51 +2811,50 @@ var RoomPlan = (() => {
     isNulled() {
       return isNulledBox(this);
     }
-    // Merge rect box with another, return a new instance
     merge(box) {
-      const x5 = Math.min(this.x, box.x);
-      const y5 = Math.min(this.y, box.y);
-      const width4 = Math.max(this.x + this.width, box.x + box.width) - x5;
-      const height4 = Math.max(this.y + this.height, box.y + box.height) - y5;
-      return new _Box(x5, y5, width4, height4);
+      const x2 = Math.min(this.x, box.x);
+      const y2 = Math.min(this.y, box.y);
+      const width2 = Math.max(this.x + this.width, box.x + box.width) - x2;
+      const height2 = Math.max(this.y + this.height, box.y + box.height) - y2;
+      return new Box2(x2, y2, width2, height2);
     }
     toArray() {
-      return [this.x, this.y, this.width, this.height];
+      return [
+        this.x,
+        this.y,
+        this.width,
+        this.height
+      ];
     }
     toString() {
       return this.x + " " + this.y + " " + this.width + " " + this.height;
     }
     transform(m) {
-      if (!(m instanceof Matrix)) {
-        m = new Matrix(m);
-      }
+      if (!(m instanceof Matrix)) m = new Matrix(m);
       let xMin = Infinity;
       let xMax = -Infinity;
       let yMin = Infinity;
       let yMax = -Infinity;
-      const pts = [
-        new Point(this.x, this.y),
-        new Point(this.x2, this.y),
-        new Point(this.x, this.y2),
-        new Point(this.x2, this.y2)
-      ];
-      pts.forEach(function(p) {
+      [
+        new Point3(this.x, this.y),
+        new Point3(this.x2, this.y),
+        new Point3(this.x, this.y2),
+        new Point3(this.x2, this.y2)
+      ].forEach(function(p) {
         p = p.transform(m);
         xMin = Math.min(xMin, p.x);
         xMax = Math.max(xMax, p.x);
         yMin = Math.min(yMin, p.y);
         yMax = Math.max(yMax, p.y);
       });
-      return new _Box(xMin, yMin, xMax - xMin, yMax - yMin);
+      return new Box2(xMin, yMin, xMax - xMin, yMax - yMin);
     }
   };
   function getBox(el, getBBoxFn, retry) {
     let box;
     try {
       box = getBBoxFn(el.node);
-      if (isNulledBox(box) && !domContains(el.node)) {
-        throw new Error("Element not in the dom");
-      }
+      if (isNulledBox(box) && !domContains(el.node)) throw new Error("Element not in the dom");
     } catch (e) {
       box = retry(el);
     }
@@ -1542,70 +2869,54 @@ var RoomPlan = (() => {
         clone.remove();
         return box2;
       } catch (e) {
-        throw new Error(
-          `Getting bbox of element "${el.node.nodeName}" is not possible: ${e.toString()}`
-        );
+        throw new Error(`Getting bbox of element "${el.node.nodeName}" is not possible: ${e.toString()}`);
       }
     };
     const box = getBox(this, getBBox, retry);
-    const bbox2 = new Box(box);
-    return bbox2;
+    return new Box(box);
   }
   function rbox(el) {
     const getRBox = (node) => node.getBoundingClientRect();
     const retry = (el2) => {
-      throw new Error(
-        `Getting rbox of element "${el2.node.nodeName}" is not possible`
-      );
+      throw new Error(`Getting rbox of element "${el2.node.nodeName}" is not possible`);
     };
     const box = getBox(this, getRBox, retry);
     const rbox2 = new Box(box);
-    if (el) {
-      return rbox2.transform(el.screenCTM().inverseO());
-    }
+    if (el) return rbox2.transform(el.screenCTM().inverseO());
     return rbox2.addOffset();
   }
-  function inside(x5, y5) {
+  function inside(x2, y2) {
     const box = this.bbox();
-    return x5 > box.x && y5 > box.y && x5 < box.x + box.width && y5 < box.y + box.height;
+    return x2 > box.x && y2 > box.y && x2 < box.x + box.width && y2 < box.y + box.height;
   }
-  registerMethods({
-    viewbox: {
-      viewbox(x5, y5, width4, height4) {
-        if (x5 == null) return new Box(this.attr("viewBox"));
-        return this.attr("viewBox", new Box(x5, y5, width4, height4));
-      },
-      zoom(level, point2) {
-        let { width: width4, height: height4 } = this.attr(["width", "height"]);
-        if (!width4 && !height4 || typeof width4 === "string" || typeof height4 === "string") {
-          width4 = this.node.clientWidth;
-          height4 = this.node.clientHeight;
-        }
-        if (!width4 || !height4) {
-          throw new Error(
-            "Impossible to get absolute width and height. Please provide an absolute width and height attribute on the zooming element"
-          );
-        }
-        const v = this.viewbox();
-        const zoomX = width4 / v.width;
-        const zoomY = height4 / v.height;
-        const zoom = Math.min(zoomX, zoomY);
-        if (level == null) {
-          return zoom;
-        }
-        let zoomAmount = zoom / level;
-        if (zoomAmount === Infinity) zoomAmount = Number.MAX_SAFE_INTEGER / 100;
-        point2 = point2 || new Point(width4 / 2 / zoomX + v.x, height4 / 2 / zoomY + v.y);
-        const box = new Box(v).transform(
-          new Matrix({ scale: zoomAmount, origin: point2 })
-        );
-        return this.viewbox(box);
+  registerMethods({ viewbox: {
+    viewbox(x2, y2, width2, height2) {
+      if (x2 == null) return new Box(this.attr("viewBox"));
+      return this.attr("viewBox", new Box(x2, y2, width2, height2));
+    },
+    zoom(level, point2) {
+      let { width: width2, height: height2 } = this.attr(["width", "height"]);
+      if (!width2 && !height2 || typeof width2 === "string" || typeof height2 === "string") {
+        width2 = this.node.clientWidth;
+        height2 = this.node.clientHeight;
       }
+      if (!width2 || !height2) throw new Error("Impossible to get absolute width and height. Please provide an absolute width and height attribute on the zooming element");
+      const v = this.viewbox();
+      const zoomX = width2 / v.width;
+      const zoomY = height2 / v.height;
+      const zoom = Math.min(zoomX, zoomY);
+      if (level == null) return zoom;
+      let zoomAmount = zoom / level;
+      if (zoomAmount === Infinity) zoomAmount = Number.MAX_SAFE_INTEGER / 100;
+      point2 = point2 || new Point3(width2 / 2 / zoomX + v.x, height2 / 2 / zoomY + v.y);
+      const box = new Box(v).transform(new Matrix({
+        scale: zoomAmount,
+        origin: point2
+      }));
+      return this.viewbox(box);
     }
-  });
+  } });
   register(Box, "Box");
-
-  // node_modules/@svgdotjs/svg.js/src/types/List.js
   var List = class extends Array {
     constructor(arr = [], ...args) {
       super(arr, ...args);
@@ -1614,46 +2925,72 @@ var RoomPlan = (() => {
       this.push(...arr);
     }
   };
-  var List_default = List;
   extend([List], {
     each(fnOrMethodName, ...args) {
-      if (typeof fnOrMethodName === "function") {
-        return this.map((el, i, arr) => {
-          return fnOrMethodName.call(el, el, i, arr);
-        });
-      } else {
-        return this.map((el) => {
-          return el[fnOrMethodName](...args);
-        });
-      }
+      if (typeof fnOrMethodName === "function") return this.map((el, i, arr) => {
+        return fnOrMethodName.call(el, el, i, arr);
+      });
+      else return this.map((el) => {
+        return el[fnOrMethodName](...args);
+      });
     },
     toArray() {
       return Array.prototype.concat.apply([], this);
     }
   });
-  var reserved = ["toArray", "constructor", "each"];
-  List.extend = function(methods3) {
-    methods3 = methods3.reduce((obj, name) => {
-      if (reserved.includes(name)) return obj;
+  var reserved = [
+    "toArray",
+    "constructor",
+    "each"
+  ];
+  List.extend = function(methods2) {
+    methods2 = methods2.reduce((obj, name) => {
+      if ((0, import_includes.default)(reserved).call(reserved, name)) return obj;
       if (name[0] === "_") return obj;
-      if (name in Array.prototype) {
-        obj["$" + name] = Array.prototype[name];
-      }
+      if (name in Array.prototype) obj["$" + name] = Array.prototype[name];
       obj[name] = function(...attrs2) {
         return this.each(name, ...attrs2);
       };
       return obj;
     }, {});
-    extend([List], methods3);
+    extend([List], methods2);
   };
-
-  // node_modules/@svgdotjs/svg.js/src/modules/core/selector.js
+  function getReferenceId(value) {
+    let referenceValue = (value + "").trim();
+    const url = referenceValue.match(/^url\((.*)\)$/i);
+    if (url) {
+      referenceValue = url[1].trim();
+      const quote = referenceValue[0];
+      if (quote === '"' || quote === "'") {
+        if (referenceValue[referenceValue.length - 1] !== quote) return null;
+        referenceValue = referenceValue.slice(1, -1);
+      }
+    }
+    const match = referenceValue.match(reference);
+    return match ? match[1].slice(1) : null;
+  }
+  function findById(rootNode, id) {
+    const selector = `#${globals.window.CSS.escape(id)}`;
+    if (rootNode.nodeType === 1 && rootNode.matches(selector)) return rootNode;
+    return rootNode.querySelector(selector);
+  }
+  function resolveReference(node, value) {
+    const id = getReferenceId(value);
+    return id ? findById(node.getRootNode(), id) : null;
+  }
+  function findReferences(node, attribute, selector = `[${attribute}]`) {
+    const id = node.getAttribute("id");
+    const rootNode = node.getRootNode();
+    if (!id || findById(rootNode, id) !== node) return new List();
+    const references = [];
+    if (rootNode.nodeType === 1 && rootNode.matches(selector) && getReferenceId(rootNode.getAttribute(attribute)) === id) references.push(adopt(rootNode));
+    for (const element of rootNode.querySelectorAll(selector)) if (getReferenceId(element.getAttribute(attribute)) === id) references.push(adopt(element));
+    return new List(references);
+  }
   function baseFind(query, parent) {
-    return new List_default(
-      map((parent || globals.document).querySelectorAll(query), function(node) {
-        return adopt(node);
-      })
-    );
+    return new List(map((parent || globals.document).querySelectorAll(query), function(node) {
+      return adopt(node);
+    }));
   }
   function find(query) {
     return baseFind(query, this.node);
@@ -1661,40 +2998,48 @@ var RoomPlan = (() => {
   function findOne(query) {
     return adopt(this.node.querySelector(query));
   }
-
-  // node_modules/@svgdotjs/svg.js/src/modules/core/event.js
   var listenerId = 0;
-  var windowEvents = {};
+  var eventStore = /* @__PURE__ */ new WeakMap();
+  var listenerIds = /* @__PURE__ */ new WeakMap();
+  var createEventMap = () => /* @__PURE__ */ Object.create(null);
   function getEvents(instance) {
-    let n = instance.getEventHolder();
-    if (n === globals.window) n = windowEvents;
-    if (!n.events) n.events = {};
-    return n.events;
+    const holder = instance.getEventHolder();
+    let bag = eventStore.get(holder);
+    if (!bag) {
+      bag = createEventMap();
+      eventStore.set(holder, bag);
+    }
+    return bag;
   }
   function getEventTarget(instance) {
     return instance.getEventTarget();
   }
   function clearEvents(instance) {
-    let n = instance.getEventHolder();
-    if (n === globals.window) n = windowEvents;
-    if (n.events) n.events = {};
+    eventStore.delete(instance.getEventHolder());
   }
   function on(node, events, listener, binding, options) {
     const l = listener.bind(binding || node);
+    const listenerOptions = options || false;
     const instance = makeInstance(node);
     const bag = getEvents(instance);
     const n = getEventTarget(instance);
     events = Array.isArray(events) ? events : events.split(delimiter);
-    if (!listener._svgjsListenerId) {
-      listener._svgjsListenerId = ++listenerId;
+    let id = listenerIds.get(listener);
+    if (!id) {
+      id = ++listenerId;
+      listenerIds.set(listener, id);
     }
     events.forEach(function(event) {
       const ev = event.split(".")[0];
       const ns = event.split(".")[1] || "*";
-      bag[ev] = bag[ev] || {};
-      bag[ev][ns] = bag[ev][ns] || {};
-      bag[ev][ns][listener._svgjsListenerId] = l;
-      n.addEventListener(ev, l, options || false);
+      bag[ev] = bag[ev] || createEventMap();
+      bag[ev][ns] = bag[ev][ns] || createEventMap();
+      bag[ev][ns][id] = bag[ev][ns][id] || [];
+      bag[ev][ns][id].push({
+        listener: l,
+        options: listenerOptions
+      });
+      n.addEventListener(ev, l, listenerOptions);
     });
   }
   function off(node, events, listener, options) {
@@ -1702,7 +3047,7 @@ var RoomPlan = (() => {
     const bag = getEvents(instance);
     const n = getEventTarget(instance);
     if (typeof listener === "function") {
-      listener = listener._svgjsListenerId;
+      listener = listenerIds.get(listener);
       if (!listener) return;
     }
     events = Array.isArray(events) ? events : (events || "").split(delimiter);
@@ -1712,48 +3057,35 @@ var RoomPlan = (() => {
       let namespace, l;
       if (listener) {
         if (bag[ev] && bag[ev][ns || "*"]) {
-          n.removeEventListener(
-            ev,
-            bag[ev][ns || "*"][listener],
-            options || false
-          );
+          const listeners = bag[ev][ns || "*"][listener];
+          if (!listeners) return;
+          listeners.forEach(function(registration) {
+            n.removeEventListener(ev, registration.listener, registration.options ?? options ?? false);
+          });
           delete bag[ev][ns || "*"][listener];
         }
       } else if (ev && ns) {
         if (bag[ev] && bag[ev][ns]) {
-          for (l in bag[ev][ns]) {
-            off(n, [ev, ns].join("."), l);
-          }
+          for (l in bag[ev][ns]) off(n, [ev, ns].join("."), l);
           delete bag[ev][ns];
         }
       } else if (ns) {
-        for (event in bag) {
-          for (namespace in bag[event]) {
-            if (ns === namespace) {
-              off(n, [event, ns].join("."));
-            }
-          }
-        }
+        for (event in bag) for (namespace in bag[event]) if (ns === namespace) off(n, [event, ns].join("."));
       } else if (ev) {
         if (bag[ev]) {
-          for (namespace in bag[ev]) {
-            off(n, [ev, namespace].join("."));
-          }
+          for (namespace in bag[ev]) off(n, [ev, namespace].join("."));
           delete bag[ev];
         }
       } else {
-        for (event in bag) {
-          off(n, event);
-        }
+        for (event in bag) off(n, event);
         clearEvents(instance);
       }
     });
   }
   function dispatch(node, event, data2, options) {
     const n = getEventTarget(node);
-    if (event instanceof globals.window.Event) {
-      n.dispatchEvent(event);
-    } else {
+    if (event instanceof globals.window.Event) n.dispatchEvent(event);
+    else {
       event = new globals.window.CustomEvent(event, {
         detail: data2,
         cancelable: true,
@@ -1763,8 +3095,6 @@ var RoomPlan = (() => {
     }
     return event;
   }
-
-  // node_modules/@svgdotjs/svg.js/src/types/EventTarget.js
   var EventTarget = class extends Base {
     addEventListener() {
     }
@@ -1772,17 +3102,13 @@ var RoomPlan = (() => {
       return dispatch(this, event, data2, options);
     }
     dispatchEvent(event) {
-      const bag = this.getEventHolder().events;
-      if (!bag) return true;
-      const events = bag[event.type];
-      for (const i in events) {
-        for (const j in events[i]) {
-          events[i][j](event);
-        }
-      }
+      const events = getEvents(this)[event.type];
+      if (!events) return true;
+      for (const i in events) for (const j in events[i]) events[i][j].forEach(function(registration) {
+        registration.listener(event);
+      });
       return !event.defaultPrevented;
     }
-    // Fire given event
     fire(event, data2, options) {
       this.dispatch(event, data2, options);
       return this;
@@ -1793,12 +3119,10 @@ var RoomPlan = (() => {
     getEventTarget() {
       return this;
     }
-    // Unbind event from listener
     off(event, listener, options) {
       off(this, event, listener, options);
       return this;
     }
-    // Bind given event to listener
     on(event, listener, binding, options) {
       on(this, event, listener, binding, options);
       return this;
@@ -1807,8 +3131,6 @@ var RoomPlan = (() => {
     }
   };
   register(EventTarget, "EventTarget");
-
-  // node_modules/@svgdotjs/svg.js/src/modules/core/defaults.js
   function noop() {
   }
   var timeline = {
@@ -1817,7 +3139,6 @@ var RoomPlan = (() => {
     delay: 0
   };
   var attrs = {
-    // fill and stroke
     "fill-opacity": 1,
     "stroke-opacity": 1,
     "stroke-width": 0,
@@ -1826,27 +3147,20 @@ var RoomPlan = (() => {
     fill: "#000000",
     stroke: "#000000",
     opacity: 1,
-    // position
     x: 0,
     y: 0,
     cx: 0,
     cy: 0,
-    // size
     width: 0,
     height: 0,
-    // radius
     r: 0,
     rx: 0,
     ry: 0,
-    // gradient
     offset: 0,
     "stop-opacity": 1,
     "stop-color": "#000000",
-    // text
     "text-anchor": "start"
   };
-
-  // node_modules/@svgdotjs/svg.js/src/types/SVGArray.js
   var SVGArray = class extends Array {
     constructor(...args) {
       super(...args);
@@ -1861,7 +3175,6 @@ var RoomPlan = (() => {
       this.push(...this.parse(arr));
       return this;
     }
-    // Parse whitespace separated string
     parse(array2 = []) {
       if (array2 instanceof Array) return array2;
       return array2.trim().split(delimiter).map(parseFloat);
@@ -1875,68 +3188,54 @@ var RoomPlan = (() => {
     toString() {
       return this.join(" ");
     }
-    // Flattens the array if needed
     valueOf() {
       const ret = [];
       ret.push(...this);
       return ret;
     }
   };
-
-  // node_modules/@svgdotjs/svg.js/src/types/SVGNumber.js
-  var SVGNumber = class _SVGNumber {
-    // Initialize
+  var SVGNumber = class SVGNumber2 {
     constructor(...args) {
       this.init(...args);
     }
     convert(unit) {
-      return new _SVGNumber(this.value, unit);
+      return new SVGNumber2(this.value, unit);
     }
-    // Divide number
     divide(number) {
-      number = new _SVGNumber(number);
-      return new _SVGNumber(this / number, this.unit || number.unit);
+      number = new SVGNumber2(number);
+      return new SVGNumber2(this / number, this.unit || number.unit);
     }
     init(value, unit) {
       unit = Array.isArray(value) ? value[1] : unit;
       value = Array.isArray(value) ? value[0] : value;
       this.value = 0;
       this.unit = unit || "";
-      if (typeof value === "number") {
-        this.value = isNaN(value) ? 0 : !isFinite(value) ? value < 0 ? -34e37 : 34e37 : value;
-      } else if (typeof value === "string") {
+      if (typeof value === "number") this.value = isNaN(value) ? 0 : !isFinite(value) ? value < 0 ? -34e37 : 34e37 : value;
+      else if (typeof value === "string") {
         unit = value.match(numberAndUnit);
         if (unit) {
           this.value = parseFloat(unit[1]);
-          if (unit[5] === "%") {
-            this.value /= 100;
-          } else if (unit[5] === "s") {
-            this.value *= 1e3;
-          }
+          if (unit[5] === "%") this.value /= 100;
+          else if (unit[5] === "s") this.value *= 1e3;
           this.unit = unit[5];
         }
-      } else {
-        if (value instanceof _SVGNumber) {
-          this.value = value.valueOf();
-          this.unit = value.unit;
-        }
+      } else if (value instanceof SVGNumber2) {
+        this.value = value.valueOf();
+        this.unit = value.unit;
       }
       return this;
     }
-    // Subtract number
     minus(number) {
-      number = new _SVGNumber(number);
-      return new _SVGNumber(this - number, this.unit || number.unit);
+      number = new SVGNumber2(number);
+      return new SVGNumber2(this - number, this.unit || number.unit);
     }
-    // Add number
     plus(number) {
-      number = new _SVGNumber(number);
-      return new _SVGNumber(this + number, this.unit || number.unit);
+      number = new SVGNumber2(number);
+      return new SVGNumber2(this + number, this.unit || number.unit);
     }
-    // Multiply number
     times(number) {
-      number = new _SVGNumber(number);
-      return new _SVGNumber(this * number, this.unit || number.unit);
+      number = new SVGNumber2(number);
+      return new SVGNumber2(this * number, this.unit || number.unit);
     }
     toArray() {
       return [this.value, this.unit];
@@ -1951,8 +3250,6 @@ var RoomPlan = (() => {
       return this.value;
     }
   };
-
-  // node_modules/@svgdotjs/svg.js/src/modules/core/attr.js
   var colorAttributes = /* @__PURE__ */ new Set([
     "fill",
     "stroke",
@@ -1970,118 +3267,78 @@ var RoomPlan = (() => {
     if (attr2 == null) {
       attr2 = {};
       val = this.node.attributes;
-      for (const node of val) {
-        attr2[node.nodeName] = isNumber.test(node.nodeValue) ? parseFloat(node.nodeValue) : node.nodeValue;
-      }
+      for (const node of val) attr2[node.nodeName] = isNumber.test(node.nodeValue) ? parseFloat(node.nodeValue) : node.nodeValue;
       return attr2;
-    } else if (attr2 instanceof Array) {
-      return attr2.reduce((last, curr) => {
-        last[curr] = this.attr(curr);
-        return last;
-      }, {});
-    } else if (typeof attr2 === "object" && attr2.constructor === Object) {
-      for (val in attr2) this.attr(val, attr2[val]);
-    } else if (val === null) {
-      this.node.removeAttribute(attr2);
-    } else if (val == null) {
+    } else if (attr2 instanceof Array) return attr2.reduce((last, curr) => {
+      last[curr] = this.attr(curr);
+      return last;
+    }, {});
+    else if (typeof attr2 === "object" && attr2.constructor === Object) for (val in attr2) this.attr(val, attr2[val]);
+    else if (val === null) this.node.removeAttribute(attr2);
+    else if (val == null) {
       val = this.node.getAttribute(attr2);
       return val == null ? attrs[attr2] : isNumber.test(val) ? parseFloat(val) : val;
     } else {
       val = hooks.reduce((_val, hook) => {
         return hook(attr2, _val, this);
       }, val);
-      if (typeof val === "number") {
-        val = new SVGNumber(val);
-      } else if (colorAttributes.has(attr2) && Color.isColor(val)) {
-        val = new Color(val);
-      } else if (val.constructor === Array) {
-        val = new SVGArray(val);
-      }
+      if (typeof val === "number") val = new SVGNumber(val);
+      else if (colorAttributes.has(attr2) && Color.isColor(val)) val = new Color(val);
+      else if (val.constructor === Array) val = new SVGArray(val);
       if (attr2 === "leading") {
-        if (this.leading) {
-          this.leading(val);
-        }
-      } else {
-        typeof ns === "string" ? this.node.setAttributeNS(ns, attr2, val.toString()) : this.node.setAttribute(attr2, val.toString());
-      }
-      if (this.rebuild && (attr2 === "font-size" || attr2 === "x")) {
-        this.rebuild();
-      }
+        if (this.leading) this.leading(val);
+      } else typeof ns === "string" ? this.node.setAttributeNS(ns, attr2, val.toString()) : this.node.setAttribute(attr2, val.toString());
+      if (this.rebuild && (attr2 === "font-size" || attr2 === "x")) this.rebuild();
     }
     return this;
   }
-
-  // node_modules/@svgdotjs/svg.js/src/elements/Dom.js
-  var Dom = class _Dom extends EventTarget {
+  var Dom = class Dom2 extends EventTarget {
     constructor(node, attrs2) {
       super();
       this.node = node;
       this.type = node.nodeName;
-      if (attrs2 && node !== attrs2) {
-        this.attr(attrs2);
-      }
+      if (attrs2 && node !== attrs2) this.attr(attrs2);
     }
-    // Add given element at a position
     add(element, i) {
       element = makeInstance(element);
-      if (element.removeNamespace && this.node instanceof globals.window.SVGElement) {
-        element.removeNamespace();
-      }
-      if (i == null) {
-        this.node.appendChild(element.node);
-      } else if (element.node !== this.node.childNodes[i]) {
-        this.node.insertBefore(element.node, this.node.childNodes[i]);
-      }
+      if (element.removeNamespace && this.node instanceof globals.window.SVGElement) element.removeNamespace();
+      if (i == null) this.node.appendChild(element.node);
+      else if (element.node !== this.node.childNodes[i]) this.node.insertBefore(element.node, this.node.childNodes[i]);
       return this;
     }
-    // Add element to given container and return self
     addTo(parent, i) {
       return makeInstance(parent).put(this, i);
     }
-    // Returns all child elements
     children() {
-      return new List_default(
-        map(this.node.children, function(node) {
-          return adopt(node);
-        })
-      );
+      return new List(map(this.node.children, function(node) {
+        return adopt(node);
+      }));
     }
-    // Remove all elements in this container
     clear() {
-      while (this.node.hasChildNodes()) {
-        this.node.removeChild(this.node.lastChild);
-      }
+      while (this.node.hasChildNodes()) this.node.removeChild(this.node.lastChild);
       return this;
     }
-    // Clone element
     clone(deep = true, assignNewIds = true) {
       this.writeDataToDom();
       let nodeClone = this.node.cloneNode(deep);
-      if (assignNewIds) {
-        nodeClone = assignNewId(nodeClone);
-      }
+      if (assignNewIds) nodeClone = assignNewId(nodeClone);
       return new this.constructor(nodeClone);
     }
-    // Iterates over all children and invokes a given block
     each(block, deep) {
       const children = this.children();
       let i, il;
       for (i = 0, il = children.length; i < il; i++) {
         block.apply(children[i], [i, children]);
-        if (deep) {
-          children[i].each(block, deep);
-        }
+        if (deep) children[i].each(block, deep);
       }
       return this;
     }
     element(nodeName, attrs2) {
-      return this.put(new _Dom(create(nodeName), attrs2));
+      return this.put(new Dom2(create(nodeName), attrs2));
     }
-    // Get first child
     first() {
       return adopt(this.node.firstChild);
     }
-    // Get a element at the given index
     get(i) {
       return adopt(this.node.childNodes[i]);
     }
@@ -2091,92 +3348,68 @@ var RoomPlan = (() => {
     getEventTarget() {
       return this.node;
     }
-    // Checks if the given element is a child
     has(element) {
       return this.index(element) >= 0;
     }
     html(htmlOrFn, outerHTML) {
       return this.xml(htmlOrFn, outerHTML, html);
     }
-    // Get / set id
     id(id) {
-      if (typeof id === "undefined" && !this.node.id) {
-        this.node.id = eid(this.type);
-      }
+      if (typeof id === "undefined" && !this.node.id) this.node.id = eid(this.type);
       return this.attr("id", id);
     }
-    // Gets index of given element
     index(element) {
       return [].slice.call(this.node.childNodes).indexOf(element.node);
     }
-    // Get the last child
     last() {
       return adopt(this.node.lastChild);
     }
-    // matches the element vs a css selector
     matches(selector) {
       const el = this.node;
       const matcher = el.matches || el.matchesSelector || el.msMatchesSelector || el.mozMatchesSelector || el.webkitMatchesSelector || el.oMatchesSelector || null;
       return matcher && matcher.call(el, selector);
     }
-    // Returns the parent element instance
     parent(type) {
       let parent = this;
       if (!parent.node.parentNode) return null;
       parent = adopt(parent.node.parentNode);
       if (!type) return parent;
-      do {
-        if (typeof type === "string" ? parent.matches(type) : parent instanceof type)
-          return parent;
-      } while (parent = adopt(parent.node.parentNode));
+      do
+        if (typeof type === "string" ? parent.matches(type) : parent instanceof type) return parent;
+      while (parent = adopt(parent.node.parentNode));
       return parent;
     }
-    // Basically does the same as `add()` but returns the added element instead
     put(element, i) {
       element = makeInstance(element);
       this.add(element, i);
       return element;
     }
-    // Add element to given container and return container
     putIn(parent, i) {
       return makeInstance(parent).add(this, i);
     }
-    // Remove element
     remove() {
-      if (this.parent()) {
-        this.parent().removeElement(this);
-      }
+      if (this.parent()) this.parent().removeElement(this);
       return this;
     }
-    // Remove a given child
     removeElement(element) {
       this.node.removeChild(element.node);
       return this;
     }
-    // Replace this with element
     replace(element) {
       element = makeInstance(element);
-      if (this.node.parentNode) {
-        this.node.parentNode.replaceChild(element.node, this.node);
-      }
+      if (this.node.parentNode) this.node.parentNode.replaceChild(element.node, this.node);
       return element;
     }
     round(precision = 2, map2 = null) {
       const factor = 10 ** precision;
       const attrs2 = this.attr(map2);
-      for (const i in attrs2) {
-        if (typeof attrs2[i] === "number") {
-          attrs2[i] = Math.round(attrs2[i] * factor) / factor;
-        }
-      }
+      for (const i in attrs2) if (typeof attrs2[i] === "number") attrs2[i] = Math.round(attrs2[i] * factor) / factor;
       this.attr(attrs2);
       return this;
     }
-    // Import / Export raw svg
     svg(svgOrFn, outerSVG) {
       return this.xml(svgOrFn, outerSVG, svg);
     }
-    // Return id on string conversion
     toString() {
       return this.id();
     }
@@ -2186,20 +3419,16 @@ var RoomPlan = (() => {
     }
     wrap(node) {
       const parent = this.parent();
-      if (!parent) {
-        return this.addTo(node);
-      }
+      if (!parent) return this.addTo(node);
       const position2 = parent.index(this);
       return parent.put(node, position2).put(this);
     }
-    // write svgjs data to the dom
     writeDataToDom() {
       this.each(function() {
         this.writeDataToDom();
       });
       return this;
     }
-    // Import / Export raw svg
     xml(xmlOrFn, outerXML, ns) {
       if (typeof xmlOrFn === "boolean") {
         ns = outerXML;
@@ -2220,11 +3449,8 @@ var RoomPlan = (() => {
           current.each(function() {
             const result = xmlOrFn(this);
             const _this = result || this;
-            if (result === false) {
-              this.remove();
-            } else if (result && this !== _this) {
-              this.replace(_this);
-            }
+            if (result === false) this.remove();
+            else if (result && this !== _this) this.replace(_this);
           }, true);
         }
         return outerXML ? current.node.outerHTML : current.node.innerHTML;
@@ -2233,128 +3459,100 @@ var RoomPlan = (() => {
       const well = create("wrapper", ns);
       const fragment = globals.document.createDocumentFragment();
       well.innerHTML = xmlOrFn;
-      for (let len = well.children.length; len--; ) {
-        fragment.appendChild(well.firstElementChild);
-      }
+      for (let len = well.children.length; len--; ) fragment.appendChild(well.firstElementChild);
       const parent = this.parent();
       return outerXML ? this.replace(fragment) && parent : this.add(fragment);
     }
   };
-  extend(Dom, { attr, find, findOne });
+  extend(Dom, {
+    attr,
+    find,
+    findOne
+  });
   register(Dom, "Dom");
-
-  // node_modules/@svgdotjs/svg.js/src/elements/Element.js
   var Element = class extends Dom {
     constructor(node, attrs2) {
       super(node, attrs2);
       this.dom = {};
       this.node.instance = this;
-      if (node.hasAttribute("data-svgjs") || node.hasAttribute("svgjs:data")) {
-        this.setData(
-          JSON.parse(node.getAttribute("data-svgjs")) ?? JSON.parse(node.getAttribute("svgjs:data")) ?? {}
-        );
-      }
+      if (node.hasAttribute("data-svgjs") || node.hasAttribute("svgjs:data")) this.setData(JSON.parse(node.getAttribute("data-svgjs")) ?? JSON.parse(node.getAttribute("svgjs:data")) ?? {});
     }
-    // Move element by its center
-    center(x5, y5) {
-      return this.cx(x5).cy(y5);
+    center(x2, y2) {
+      return this.cx(x2).cy(y2);
     }
-    // Move by center over x-axis
-    cx(x5) {
-      return x5 == null ? this.x() + this.width() / 2 : this.x(x5 - this.width() / 2);
+    cx(x2) {
+      return x2 == null ? this.x() + this.width() / 2 : this.x(x2 - this.width() / 2);
     }
-    // Move by center over y-axis
-    cy(y5) {
-      return y5 == null ? this.y() + this.height() / 2 : this.y(y5 - this.height() / 2);
+    cy(y2) {
+      return y2 == null ? this.y() + this.height() / 2 : this.y(y2 - this.height() / 2);
     }
-    // Get defs
     defs() {
       const root2 = this.root();
       return root2 && root2.defs();
     }
-    // Relative move over x and y axes
-    dmove(x5, y5) {
-      return this.dx(x5).dy(y5);
+    dmove(x2, y2) {
+      return this.dx(x2).dy(y2);
     }
-    // Relative move over x axis
-    dx(x5 = 0) {
-      return this.x(new SVGNumber(x5).plus(this.x()));
+    dx(x2 = 0) {
+      return this.x(new SVGNumber(x2).plus(this.x()));
     }
-    // Relative move over y axis
-    dy(y5 = 0) {
-      return this.y(new SVGNumber(y5).plus(this.y()));
+    dy(y2 = 0) {
+      return this.y(new SVGNumber(y2).plus(this.y()));
     }
     getEventHolder() {
       return this;
     }
-    // Set height of element
-    height(height4) {
-      return this.attr("height", height4);
+    height(height2) {
+      return this.attr("height", height2);
     }
-    // Move element to given x and y values
-    move(x5, y5) {
-      return this.x(x5).y(y5);
+    move(x2, y2) {
+      return this.x(x2).y(y2);
     }
-    // return array of all ancestors of given type up to the root svg
     parents(until = this.root()) {
       const isSelector = typeof until === "string";
-      if (!isSelector) {
-        until = makeInstance(until);
-      }
-      const parents = new List_default();
+      const root2 = this.root();
+      const rootNode = root2 && root2.node;
+      if (!isSelector) until = until && makeInstance(until).node;
+      const parents = new List();
       let parent = this;
-      while ((parent = parent.parent()) && parent.node !== globals.document && parent.nodeName !== "#document-fragment") {
+      while ((parent = parent.parent()) && parent.node !== globals.document && parent.node.nodeName !== "#document-fragment") {
         parents.push(parent);
-        if (!isSelector && parent.node === until.node) {
-          break;
-        }
-        if (isSelector && parent.matches(until)) {
-          break;
-        }
-        if (parent.node === this.root().node) {
-          return null;
-        }
+        if (!isSelector && parent.node === until) break;
+        if (isSelector && parent.matches(until)) break;
+        if (rootNode && parent.node === rootNode) return null;
       }
       return parents;
     }
-    // Get referenced element form attribute value
     reference(attr2) {
       attr2 = this.attr(attr2);
       if (!attr2) return null;
-      const m = (attr2 + "").match(reference);
-      return m ? makeInstance(m[1]) : null;
+      const target = resolveReference(this.node, attr2);
+      return target ? makeInstance(target) : null;
     }
-    // Get parent document
     root() {
       const p = this.parent(getClass(root));
       return p && p.root();
     }
-    // set given data to the elements data property
     setData(o) {
       this.dom = o;
       return this;
     }
-    // Set element size to given width and height
-    size(width4, height4) {
-      const p = proportionalSize(this, width4, height4);
+    size(width2, height2) {
+      const p = proportionalSize(this, width2, height2);
       return this.width(new SVGNumber(p.width)).height(new SVGNumber(p.height));
     }
-    // Set width of element
-    width(width4) {
-      return this.attr("width", width4);
+    width(width2) {
+      return this.attr("width", width2);
     }
-    // write svgjs data to the dom
-    writeDataToDom() {
-      writeDataToDom(this, this.dom);
+    writeDataToDom(defaults) {
+      writeDataToDom(this, this.dom, defaults);
       return super.writeDataToDom();
     }
-    // Move over x-axis
-    x(x5) {
-      return this.attr("x", x5);
+    x(x2) {
+      return this.attr("x", x2);
     }
-    // Move over y-axis
-    y(y5) {
-      return this.attr("y", y5);
+    y(y2) {
+      return this.attr("y", y2);
     }
   };
   extend(Element, {
@@ -2366,8 +3564,6 @@ var RoomPlan = (() => {
     screenCTM
   });
   register(Element, "Element");
-
-  // node_modules/@svgdotjs/svg.js/src/modules/optional/sugar.js
   var sugar = {
     stroke: [
       "color",
@@ -2379,7 +3575,11 @@ var RoomPlan = (() => {
       "dasharray",
       "dashoffset"
     ],
-    fill: ["color", "opacity", "rule"],
+    fill: [
+      "color",
+      "opacity",
+      "rule"
+    ],
     prefix: function(t, a) {
       return a === "color" ? t : t + "-" + a;
     }
@@ -2388,94 +3588,93 @@ var RoomPlan = (() => {
     const extension = {};
     let i;
     extension[m] = function(o) {
-      if (typeof o === "undefined") {
-        return this.attr(m);
-      }
-      if (typeof o === "string" || o instanceof Color || Color.isRgb(o) || o instanceof Element) {
-        this.attr(m, o);
-      } else {
-        for (i = sugar[m].length - 1; i >= 0; i--) {
-          if (o[sugar[m][i]] != null) {
-            this.attr(sugar.prefix(m, sugar[m][i]), o[sugar[m][i]]);
-          }
-        }
-      }
+      if (typeof o === "undefined") return this.attr(m);
+      if (typeof o === "string" || o instanceof Color || Color.isRgb(o) || o instanceof Element) this.attr(m, o);
+      else for (i = sugar[m].length - 1; i >= 0; i--) if (o[sugar[m][i]] != null) this.attr(sugar.prefix(m, sugar[m][i]), o[sugar[m][i]]);
       return this;
     };
     registerMethods(["Element", "Runner"], extension);
   });
   registerMethods(["Element", "Runner"], {
-    // Let the user set the matrix directly
     matrix: function(mat, b, c, d, e, f) {
-      if (mat == null) {
-        return new Matrix(this);
-      }
+      if (mat == null) return new Matrix(this);
       return this.attr("transform", new Matrix(mat, b, c, d, e, f));
     },
-    // Map rotation to transform
-    rotate: function(angle, cx3, cy3) {
-      return this.transform({ rotate: angle, ox: cx3, oy: cy3 }, true);
+    rotate: function(angle, cx2, cy2) {
+      return this.transform({
+        rotate: angle,
+        ox: cx2,
+        oy: cy2
+      }, true);
     },
-    // Map skew to transform
-    skew: function(x5, y5, cx3, cy3) {
-      return arguments.length === 1 || arguments.length === 3 ? this.transform({ skew: x5, ox: y5, oy: cx3 }, true) : this.transform({ skew: [x5, y5], ox: cx3, oy: cy3 }, true);
+    skew: function(x2, y2, cx2, cy2) {
+      return arguments.length === 1 || arguments.length === 3 ? this.transform({
+        skew: x2,
+        ox: y2,
+        oy: cx2
+      }, true) : this.transform({
+        skew: [x2, y2],
+        ox: cx2,
+        oy: cy2
+      }, true);
     },
-    shear: function(lam, cx3, cy3) {
-      return this.transform({ shear: lam, ox: cx3, oy: cy3 }, true);
+    shear: function(lam, cx2, cy2) {
+      return this.transform({
+        shear: lam,
+        ox: cx2,
+        oy: cy2
+      }, true);
     },
-    // Map scale to transform
-    scale: function(x5, y5, cx3, cy3) {
-      return arguments.length === 1 || arguments.length === 3 ? this.transform({ scale: x5, ox: y5, oy: cx3 }, true) : this.transform({ scale: [x5, y5], ox: cx3, oy: cy3 }, true);
+    scale: function(x2, y2, cx2, cy2) {
+      return arguments.length === 1 || arguments.length === 3 ? this.transform({
+        scale: x2,
+        ox: y2,
+        oy: cx2
+      }, true) : this.transform({
+        scale: [x2, y2],
+        ox: cx2,
+        oy: cy2
+      }, true);
     },
-    // Map translate to transform
-    translate: function(x5, y5) {
-      return this.transform({ translate: [x5, y5] }, true);
+    translate: function(x2, y2) {
+      return this.transform({ translate: [x2, y2] }, true);
     },
-    // Map relative translations to transform
-    relative: function(x5, y5) {
-      return this.transform({ relative: [x5, y5] }, true);
+    relative: function(x2, y2) {
+      return this.transform({ relative: [x2, y2] }, true);
     },
-    // Map flip to transform
     flip: function(direction = "both", origin = "center") {
       if ("xybothtrue".indexOf(direction) === -1) {
         origin = direction;
         direction = "both";
       }
-      return this.transform({ flip: direction, origin }, true);
+      return this.transform({
+        flip: direction,
+        origin
+      }, true);
     },
-    // Opacity
     opacity: function(value) {
       return this.attr("opacity", value);
     }
   });
-  registerMethods("radius", {
-    // Add x and y radius
-    radius: function(x5, y5 = x5) {
-      const type = (this._element || this).type;
-      return type === "radialGradient" ? this.attr("r", new SVGNumber(x5)) : this.rx(x5).ry(y5);
-    }
-  });
+  registerMethods("radius", { radius: function(x2, y2 = x2) {
+    return (this._element || this).type === "radialGradient" ? this.attr("r", new SVGNumber(x2)) : this.rx(x2).ry(y2);
+  } });
   registerMethods("Path", {
-    // Get path length
     length: function() {
       return this.node.getTotalLength();
     },
-    // Get point at length
     pointAt: function(length2) {
-      return new Point(this.node.getPointAtLength(length2));
+      return new Point3(this.node.getPointAtLength(length2));
     }
   });
-  registerMethods(["Element", "Runner"], {
-    // Set font
-    font: function(a, v) {
-      if (typeof a === "object") {
-        for (v in a) this.font(v, a[v]);
-        return this;
-      }
-      return a === "leading" ? this.leading(v) : a === "anchor" ? this.attr("text-anchor", v) : a === "size" || a === "family" || a === "weight" || a === "stretch" || a === "variant" || a === "style" ? this.attr("font-" + a, v) : this.attr(a, v);
+  registerMethods(["Element", "Runner"], { font: function(a, v) {
+    if (typeof a === "object") {
+      for (v in a) this.font(v, a[v]);
+      return this;
     }
-  });
-  var methods2 = [
+    return a === "leading" ? this.leading(v) : a === "anchor" ? this.attr("text-anchor", v) : a === "size" || a === "family" || a === "weight" || a === "stretch" || a === "variant" || a === "style" ? this.attr("font-" + a, v) : this.attr(a, v);
+  } });
+  registerMethods("Element", [
     "click",
     "dblclick",
     "mousedown",
@@ -2499,38 +3698,26 @@ var RoomPlan = (() => {
     "pointercancel"
   ].reduce(function(last, event) {
     const fn = function(f) {
-      if (f === null) {
-        this.off(event);
-      } else {
-        this.on(event, f);
-      }
+      if (f === null) this.off(event);
+      else this.on(event, f);
       return this;
     };
     last[event] = fn;
     return last;
-  }, {});
-  registerMethods("Element", methods2);
-
-  // node_modules/@svgdotjs/svg.js/src/modules/optional/transform.js
+  }, {}));
   function untransform() {
     return this.attr("transform", null);
   }
   function matrixify() {
-    const matrix = (this.attr("transform") || "").split(transforms).slice(0, -1).map(function(str) {
+    return (this.attr("transform") || "").split(transforms).slice(0, -1).map(function(str) {
       const kv = str.trim().split("(");
-      return [
-        kv[0],
-        kv[1].split(delimiter).map(function(str2) {
-          return parseFloat(str2);
-        })
-      ];
-    }).reverse().reduce(function(matrix2, transform2) {
-      if (transform2[0] === "matrix") {
-        return matrix2.lmultiply(Matrix.fromArray(transform2[1]));
-      }
-      return matrix2[transform2[0]].apply(matrix2, transform2[1]);
+      return [kv[0].trim(), kv[1].split(delimiter).map(function(str2) {
+        return parseFloat(str2);
+      })];
+    }).reverse().reduce(function(matrix, transform2) {
+      if (transform2[0] === "matrix") return matrix.lmultiply(Matrix.fromArray(transform2[1]));
+      return matrix[transform2[0]].apply(matrix, transform2[1]);
     }, new Matrix());
-    return matrix;
   }
   function toParent(parent, i) {
     if (this === parent) return this;
@@ -2548,11 +3735,11 @@ var RoomPlan = (() => {
       const decomposed = new Matrix(this).decompose();
       return o == null ? decomposed : decomposed[o];
     }
-    if (!Matrix.isMatrixLike(o)) {
-      o = { ...o, origin: getOrigin(o, this) };
-    }
-    const cleanRelative = relative === true ? this : relative || false;
-    const result = new Matrix(cleanRelative).transform(o);
+    if (!Matrix.isMatrixLike(o)) o = {
+      ...o,
+      origin: getOrigin(o, this)
+    };
+    const result = new Matrix(relative === true ? this : relative || false).transform(o);
     return this.attr("transform", result);
   }
   registerMethods("Element", {
@@ -2562,14 +3749,10 @@ var RoomPlan = (() => {
     toRoot,
     transform
   });
-
-  // node_modules/@svgdotjs/svg.js/src/elements/Container.js
-  var Container = class _Container extends Element {
+  var Container = class Container2 extends Element {
     flatten() {
       this.each(function() {
-        if (this instanceof _Container) {
-          return this.flatten().ungroup();
-        }
+        if (this instanceof Container2) return this.flatten().ungroup();
       });
       return this;
     }
@@ -2582,8 +3765,6 @@ var RoomPlan = (() => {
     }
   };
   register(Container, "Container");
-
-  // node_modules/@svgdotjs/svg.js/src/elements/Defs.js
   var Defs = class extends Container {
     constructor(node, attrs2 = node) {
       super(nodeOrNew("defs", node), attrs2);
@@ -2596,23 +3777,18 @@ var RoomPlan = (() => {
     }
   };
   register(Defs, "Defs");
-
-  // node_modules/@svgdotjs/svg.js/src/elements/Shape.js
   var Shape = class extends Element {
   };
   register(Shape, "Shape");
-
-  // node_modules/@svgdotjs/svg.js/src/modules/core/circled.js
-  var circled_exports = {};
-  __export(circled_exports, {
-    cx: () => cx,
-    cy: () => cy,
-    height: () => height,
+  var circled_exports = /* @__PURE__ */ __exportAll({
+    cx: () => cx$1,
+    cy: () => cy$1,
+    height: () => height$2,
     rx: () => rx,
     ry: () => ry,
-    width: () => width,
-    x: () => x,
-    y: () => y
+    width: () => width$2,
+    x: () => x$3,
+    y: () => y$3
   });
   function rx(rx2) {
     return this.attr("rx", rx2);
@@ -2620,52 +3796,42 @@ var RoomPlan = (() => {
   function ry(ry2) {
     return this.attr("ry", ry2);
   }
-  function x(x5) {
-    return x5 == null ? this.cx() - this.rx() : this.cx(x5 + this.rx());
+  function x$3(x2) {
+    return x2 == null ? this.cx() - this.rx() : this.cx(x2 + this.rx());
   }
-  function y(y5) {
-    return y5 == null ? this.cy() - this.ry() : this.cy(y5 + this.ry());
+  function y$3(y2) {
+    return y2 == null ? this.cy() - this.ry() : this.cy(y2 + this.ry());
   }
-  function cx(x5) {
-    return this.attr("cx", x5);
+  function cx$1(x2) {
+    return this.attr("cx", x2);
   }
-  function cy(y5) {
-    return this.attr("cy", y5);
+  function cy$1(y2) {
+    return this.attr("cy", y2);
   }
-  function width(width4) {
-    return width4 == null ? this.rx() * 2 : this.rx(new SVGNumber(width4).divide(2));
+  function width$2(width2) {
+    return width2 == null ? this.rx() * 2 : this.rx(new SVGNumber(width2).divide(2));
   }
-  function height(height4) {
-    return height4 == null ? this.ry() * 2 : this.ry(new SVGNumber(height4).divide(2));
+  function height$2(height2) {
+    return height2 == null ? this.ry() * 2 : this.ry(new SVGNumber(height2).divide(2));
   }
-
-  // node_modules/@svgdotjs/svg.js/src/elements/Ellipse.js
   var Ellipse = class extends Shape {
     constructor(node, attrs2 = node) {
       super(nodeOrNew("ellipse", node), attrs2);
     }
-    size(width4, height4) {
-      const p = proportionalSize(this, width4, height4);
-      return this.rx(new SVGNumber(p.width).divide(2)).ry(
-        new SVGNumber(p.height).divide(2)
-      );
+    size(width2, height2) {
+      const p = proportionalSize(this, width2, height2);
+      return this.rx(new SVGNumber(p.width).divide(2)).ry(new SVGNumber(p.height).divide(2));
     }
   };
   extend(Ellipse, circled_exports);
-  registerMethods("Container", {
-    // Create an ellipse
-    ellipse: wrapWithAttrCheck(function(width4 = 0, height4 = width4) {
-      return this.put(new Ellipse()).size(width4, height4).move(0, 0);
-    })
-  });
+  registerMethods("Container", { ellipse: wrapWithAttrCheck(function(width2 = 0, height2 = width2) {
+    return this.put(new Ellipse()).size(width2, height2).move(0, 0);
+  }) });
   register(Ellipse, "Ellipse");
-
-  // node_modules/@svgdotjs/svg.js/src/elements/Fragment.js
   var Fragment = class extends Dom {
     constructor(node = globals.document.createDocumentFragment()) {
       super(node);
     }
-    // Import / Export raw xml
     xml(xmlOrFn, outerXML, ns) {
       if (typeof xmlOrFn === "boolean") {
         ns = outerXML;
@@ -2681,30 +3847,32 @@ var RoomPlan = (() => {
     }
   };
   register(Fragment, "Fragment");
-  var Fragment_default = Fragment;
-
-  // node_modules/@svgdotjs/svg.js/src/modules/core/gradiented.js
-  var gradiented_exports = {};
-  __export(gradiented_exports, {
+  var gradiented_exports = /* @__PURE__ */ __exportAll({
     from: () => from,
     to: () => to
   });
-  function from(x5, y5) {
-    return (this._element || this).type === "radialGradient" ? this.attr({ fx: new SVGNumber(x5), fy: new SVGNumber(y5) }) : this.attr({ x1: new SVGNumber(x5), y1: new SVGNumber(y5) });
+  function from(x2, y2) {
+    return (this._element || this).type === "radialGradient" ? this.attr({
+      fx: new SVGNumber(x2),
+      fy: new SVGNumber(y2)
+    }) : this.attr({
+      x1: new SVGNumber(x2),
+      y1: new SVGNumber(y2)
+    });
   }
-  function to(x5, y5) {
-    return (this._element || this).type === "radialGradient" ? this.attr({ cx: new SVGNumber(x5), cy: new SVGNumber(y5) }) : this.attr({ x2: new SVGNumber(x5), y2: new SVGNumber(y5) });
+  function to(x2, y2) {
+    return (this._element || this).type === "radialGradient" ? this.attr({
+      cx: new SVGNumber(x2),
+      cy: new SVGNumber(y2)
+    }) : this.attr({
+      x2: new SVGNumber(x2),
+      y2: new SVGNumber(y2)
+    });
   }
-
-  // node_modules/@svgdotjs/svg.js/src/elements/Gradient.js
   var Gradient = class extends Container {
     constructor(type, attrs2) {
-      super(
-        nodeOrNew(type + "Gradient", typeof type === "string" ? null : type),
-        attrs2
-      );
+      super(nodeOrNew(type + "Gradient", typeof type === "string" ? null : type), attrs2);
     }
-    // custom attr to handle transform
     attr(a, b, c) {
       if (a === "transform") a = "gradientTransform";
       return super.attr(a, b, c);
@@ -2713,49 +3881,34 @@ var RoomPlan = (() => {
       return new Box();
     }
     targets() {
-      return baseFind("svg [fill*=" + this.id() + "]");
+      return findReferences(this.node, "fill");
     }
-    // Alias string conversion to fill
     toString() {
       return this.url();
     }
-    // Update gradient
     update(block) {
       this.clear();
-      if (typeof block === "function") {
-        block.call(this, this);
-      }
+      if (typeof block === "function") block.call(this, this);
       return this;
     }
-    // Return the fill id
     url() {
       return "url(#" + this.id() + ")";
     }
   };
   extend(Gradient, gradiented_exports);
   registerMethods({
-    Container: {
-      // Create gradient element in defs
-      gradient(...args) {
-        return this.defs().gradient(...args);
-      }
-    },
-    // define gradient
-    Defs: {
-      gradient: wrapWithAttrCheck(function(type, block) {
-        return this.put(new Gradient(type)).update(block);
-      })
-    }
+    Container: { gradient(...args) {
+      return this.defs().gradient(...args);
+    } },
+    Defs: { gradient: wrapWithAttrCheck(function(type, block) {
+      return this.put(new Gradient(type)).update(block);
+    }) }
   });
   register(Gradient, "Gradient");
-
-  // node_modules/@svgdotjs/svg.js/src/elements/Pattern.js
   var Pattern = class extends Container {
-    // Initialize node
     constructor(node, attrs2 = node) {
       super(nodeOrNew("pattern", node), attrs2);
     }
-    // custom attr to handle transform
     attr(a, b, c) {
       if (a === "transform") a = "patternTransform";
       return super.attr(a, b, c);
@@ -2764,74 +3917,50 @@ var RoomPlan = (() => {
       return new Box();
     }
     targets() {
-      return baseFind("svg [fill*=" + this.id() + "]");
+      return findReferences(this.node, "fill");
     }
-    // Alias string conversion to fill
     toString() {
       return this.url();
     }
-    // Update pattern by rebuilding
     update(block) {
       this.clear();
-      if (typeof block === "function") {
-        block.call(this, this);
-      }
+      if (typeof block === "function") block.call(this, this);
       return this;
     }
-    // Return the fill id
     url() {
       return "url(#" + this.id() + ")";
     }
   };
   registerMethods({
-    Container: {
-      // Create pattern element in defs
-      pattern(...args) {
-        return this.defs().pattern(...args);
-      }
-    },
-    Defs: {
-      pattern: wrapWithAttrCheck(function(width4, height4, block) {
-        return this.put(new Pattern()).update(block).attr({
-          x: 0,
-          y: 0,
-          width: width4,
-          height: height4,
-          patternUnits: "userSpaceOnUse"
-        });
-      })
-    }
+    Container: { pattern(...args) {
+      return this.defs().pattern(...args);
+    } },
+    Defs: { pattern: wrapWithAttrCheck(function(width2, height2, block) {
+      return this.put(new Pattern()).update(block).attr({
+        x: 0,
+        y: 0,
+        width: width2,
+        height: height2,
+        patternUnits: "userSpaceOnUse"
+      });
+    }) }
   });
   register(Pattern, "Pattern");
-
-  // node_modules/@svgdotjs/svg.js/src/elements/Image.js
   var Image = class extends Shape {
     constructor(node, attrs2 = node) {
       super(nodeOrNew("image", node), attrs2);
     }
-    // (re)load image
     load(url, callback) {
       if (!url) return this;
       const img = new globals.window.Image();
-      on(
-        img,
-        "load",
-        function(e) {
-          const p = this.parent(Pattern);
-          if (this.width() === 0 && this.height() === 0) {
-            this.size(img.width, img.height);
-          }
-          if (p instanceof Pattern) {
-            if (p.width() === 0 && p.height() === 0) {
-              p.size(this.width(), this.height());
-            }
-          }
-          if (typeof callback === "function") {
-            callback.call(this, e);
-          }
-        },
-        this
-      );
+      on(img, "load", function(e) {
+        const p = this.parent(Pattern);
+        if (this.width() === 0 && this.height() === 0) this.size(img.width, img.height);
+        if (p instanceof Pattern) {
+          if (p.width() === 0 && p.height() === 0) p.size(this.width(), this.height());
+        }
+        if (typeof callback === "function") callback.call(this, e);
+      }, this);
       on(img, "load error", function() {
         off(img);
       });
@@ -2840,30 +3969,18 @@ var RoomPlan = (() => {
   };
   registerAttrHook(function(attr2, val, _this) {
     if (attr2 === "fill" || attr2 === "stroke") {
-      if (isImage.test(val)) {
-        val = _this.root().defs().image(val);
-      }
+      if (isImage.test(val)) val = _this.root().defs().image(val);
     }
-    if (val instanceof Image) {
-      val = _this.root().defs().pattern(0, 0, (pattern) => {
-        pattern.add(val);
-      });
-    }
+    if (val instanceof Image) val = _this.root().defs().pattern(0, 0, (pattern) => {
+      pattern.add(val);
+    });
     return val;
   });
-  registerMethods({
-    Container: {
-      // create image element, load image and set its size
-      image: wrapWithAttrCheck(function(source, callback) {
-        return this.put(new Image()).size(0, 0).load(source, callback);
-      })
-    }
-  });
+  registerMethods({ Container: { image: wrapWithAttrCheck(function(source, callback) {
+    return this.put(new Image()).size(0, 0).load(source, callback);
+  }) } });
   register(Image, "Image");
-
-  // node_modules/@svgdotjs/svg.js/src/types/PointArray.js
   var PointArray = class extends SVGArray {
-    // Get bounding box of points
     bbox() {
       let maxX = -Infinity;
       let maxY = -Infinity;
@@ -2877,45 +3994,30 @@ var RoomPlan = (() => {
       });
       return new Box(minX, minY, maxX - minX, maxY - minY);
     }
-    // Move point string
-    move(x5, y5) {
+    move(x2, y2) {
       const box = this.bbox();
-      x5 -= box.x;
-      y5 -= box.y;
-      if (!isNaN(x5) && !isNaN(y5)) {
-        for (let i = this.length - 1; i >= 0; i--) {
-          this[i] = [this[i][0] + x5, this[i][1] + y5];
-        }
-      }
+      x2 -= box.x;
+      y2 -= box.y;
+      if (!isNaN(x2) && !isNaN(y2)) for (let i = this.length - 1; i >= 0; i--) this[i] = [this[i][0] + x2, this[i][1] + y2];
       return this;
     }
-    // Parse point string and flat array
     parse(array2 = [0, 0]) {
       const points = [];
-      if (array2 instanceof Array) {
-        array2 = Array.prototype.concat.apply([], array2);
-      } else {
-        array2 = array2.trim().split(delimiter).map(parseFloat);
-      }
+      if (array2 instanceof Array) array2 = Array.prototype.concat.apply([], array2);
+      else array2 = array2.trim().split(delimiter).map(parseFloat);
       if (array2.length % 2 !== 0) array2.pop();
-      for (let i = 0, len = array2.length; i < len; i = i + 2) {
-        points.push([array2[i], array2[i + 1]]);
-      }
+      for (let i = 0, len = array2.length; i < len; i = i + 2) points.push([array2[i], array2[i + 1]]);
       return points;
     }
-    // Resize poly string
-    size(width4, height4) {
+    size(width2, height2) {
       let i;
       const box = this.bbox();
       for (i = this.length - 1; i >= 0; i--) {
-        if (box.width)
-          this[i][0] = (this[i][0] - box.x) * width4 / box.width + box.x;
-        if (box.height)
-          this[i][1] = (this[i][1] - box.y) * height4 / box.height + box.y;
+        if (box.width) this[i][0] = (this[i][0] - box.x) * width2 / box.width + box.x;
+        if (box.height) this[i][1] = (this[i][1] - box.y) * height2 / box.height + box.y;
       }
       return this;
     }
-    // Convert array to line object
     toLine() {
       return {
         x1: this[0][0],
@@ -2924,164 +4026,123 @@ var RoomPlan = (() => {
         y2: this[1][1]
       };
     }
-    // Convert array to string
     toString() {
       const array2 = [];
-      for (let i = 0, il = this.length; i < il; i++) {
-        array2.push(this[i].join(","));
-      }
+      for (let i = 0, il = this.length; i < il; i++) array2.push(this[i].join(","));
       return array2.join(" ");
     }
     transform(m) {
       return this.clone().transformO(m);
     }
-    // transform points with matrix (similar to Point.transform)
     transformO(m) {
-      if (!Matrix.isMatrixLike(m)) {
-        m = new Matrix(m);
-      }
+      if (!Matrix.isMatrixLike(m)) m = new Matrix(m);
       for (let i = this.length; i--; ) {
-        const [x5, y5] = this[i];
-        this[i][0] = m.a * x5 + m.c * y5 + m.e;
-        this[i][1] = m.b * x5 + m.d * y5 + m.f;
+        const [x2, y2] = this[i];
+        this[i][0] = m.a * x2 + m.c * y2 + m.e;
+        this[i][1] = m.b * x2 + m.d * y2 + m.f;
       }
       return this;
     }
   };
-
-  // node_modules/@svgdotjs/svg.js/src/modules/core/pointed.js
-  var pointed_exports = {};
-  __export(pointed_exports, {
+  var pointed_exports = /* @__PURE__ */ __exportAll({
     MorphArray: () => MorphArray,
-    height: () => height2,
-    width: () => width2,
-    x: () => x2,
-    y: () => y2
+    height: () => height$1,
+    width: () => width$1,
+    x: () => x$2,
+    y: () => y$2
   });
   var MorphArray = PointArray;
-  function x2(x5) {
-    return x5 == null ? this.bbox().x : this.move(x5, this.bbox().y);
+  function x$2(x2) {
+    return x2 == null ? this.bbox().x : this.move(x2, this.bbox().y);
   }
-  function y2(y5) {
-    return y5 == null ? this.bbox().y : this.move(this.bbox().x, y5);
+  function y$2(y2) {
+    return y2 == null ? this.bbox().y : this.move(this.bbox().x, y2);
   }
-  function width2(width4) {
+  function width$1(width2) {
     const b = this.bbox();
-    return width4 == null ? b.width : this.size(width4, b.height);
+    return width2 == null ? b.width : this.size(width2, b.height);
   }
-  function height2(height4) {
+  function height$1(height2) {
     const b = this.bbox();
-    return height4 == null ? b.height : this.size(b.width, height4);
+    return height2 == null ? b.height : this.size(b.width, height2);
   }
-
-  // node_modules/@svgdotjs/svg.js/src/elements/Line.js
   var Line = class extends Shape {
-    // Initialize node
     constructor(node, attrs2 = node) {
       super(nodeOrNew("line", node), attrs2);
     }
-    // Get array
     array() {
-      return new PointArray([
-        [this.attr("x1"), this.attr("y1")],
-        [this.attr("x2"), this.attr("y2")]
-      ]);
+      return new PointArray([[this.attr("x1"), this.attr("y1")], [this.attr("x2"), this.attr("y2")]]);
     }
-    // Move by left top corner
-    move(x5, y5) {
-      return this.attr(this.array().move(x5, y5).toLine());
+    move(x2, y2) {
+      return this.attr(this.array().move(x2, y2).toLine());
     }
-    // Overwrite native plot() method
-    plot(x1, y1, x22, y22) {
-      if (x1 == null) {
-        return this.array();
-      } else if (typeof y1 !== "undefined") {
-        x1 = { x1, y1, x2: x22, y2: y22 };
-      } else {
-        x1 = new PointArray(x1).toLine();
-      }
+    plot(x1, y1, x2, y2) {
+      if (x1 == null) return this.array();
+      else if (typeof y1 !== "undefined") x1 = {
+        x1,
+        y1,
+        x2,
+        y2
+      };
+      else x1 = new PointArray(x1).toLine();
       return this.attr(x1);
     }
-    // Set element size to given width and height
-    size(width4, height4) {
-      const p = proportionalSize(this, width4, height4);
+    size(width2, height2) {
+      const p = proportionalSize(this, width2, height2);
       return this.attr(this.array().size(p.width, p.height).toLine());
     }
   };
   extend(Line, pointed_exports);
-  registerMethods({
-    Container: {
-      // Create a line element
-      line: wrapWithAttrCheck(function(...args) {
-        return Line.prototype.plot.apply(
-          this.put(new Line()),
-          args[0] != null ? args : [0, 0, 0, 0]
-        );
-      })
-    }
-  });
+  registerMethods({ Container: { line: wrapWithAttrCheck(function(...args) {
+    return Line.prototype.plot.apply(this.put(new Line()), args[0] != null ? args : [
+      0,
+      0,
+      0,
+      0
+    ]);
+  }) } });
   register(Line, "Line");
-
-  // node_modules/@svgdotjs/svg.js/src/elements/Marker.js
   var Marker = class extends Container {
-    // Initialize node
     constructor(node, attrs2 = node) {
       super(nodeOrNew("marker", node), attrs2);
     }
-    // Set height of element
-    height(height4) {
-      return this.attr("markerHeight", height4);
+    height(height2) {
+      return this.attr("markerHeight", height2);
     }
     orient(orient) {
       return this.attr("orient", orient);
     }
-    // Set marker refX and refY
-    ref(x5, y5) {
-      return this.attr("refX", x5).attr("refY", y5);
+    ref(x2, y2) {
+      return this.attr("refX", x2).attr("refY", y2);
     }
-    // Return the fill id
     toString() {
       return "url(#" + this.id() + ")";
     }
-    // Update marker
     update(block) {
       this.clear();
-      if (typeof block === "function") {
-        block.call(this, this);
-      }
+      if (typeof block === "function") block.call(this, this);
       return this;
     }
-    // Set width of element
-    width(width4) {
-      return this.attr("markerWidth", width4);
+    width(width2) {
+      return this.attr("markerWidth", width2);
     }
   };
   registerMethods({
-    Container: {
-      marker(...args) {
-        return this.defs().marker(...args);
-      }
-    },
-    Defs: {
-      // Create marker
-      marker: wrapWithAttrCheck(function(width4, height4, block) {
-        return this.put(new Marker()).size(width4, height4).ref(width4 / 2, height4 / 2).viewbox(0, 0, width4, height4).attr("orient", "auto").update(block);
-      })
-    },
-    marker: {
-      // Create and attach markers
-      marker(marker, width4, height4, block) {
-        let attr2 = ["marker"];
-        if (marker !== "all") attr2.push(marker);
-        attr2 = attr2.join("-");
-        marker = arguments[1] instanceof Marker ? arguments[1] : this.defs().marker(width4, height4, block);
-        return this.attr(attr2, marker);
-      }
-    }
+    Container: { marker(...args) {
+      return this.defs().marker(...args);
+    } },
+    Defs: { marker: wrapWithAttrCheck(function(width2, height2, block) {
+      return this.put(new Marker()).size(width2, height2).ref(width2 / 2, height2 / 2).viewbox(0, 0, width2, height2).attr("orient", "auto").update(block);
+    }) },
+    marker: { marker(marker, width2, height2, block) {
+      let attr2 = ["marker"];
+      if (marker !== "all") attr2.push(marker);
+      attr2 = attr2.join("-");
+      marker = arguments[1] instanceof Marker ? arguments[1] : this.defs().marker(width2, height2, block);
+      return this.attr(attr2, marker);
+    } }
   });
   register(Marker, "Marker");
-
-  // node_modules/@svgdotjs/svg.js/src/animation/Controller.js
   function makeSetterGetter(k, f) {
     return function(v) {
       if (v == null) return this[k];
@@ -3103,53 +4164,29 @@ var RoomPlan = (() => {
     "<": function(pos) {
       return -Math.cos(pos * Math.PI / 2) + 1;
     },
-    bezier: function(x1, y1, x22, y22) {
+    bezier: function(x1, y1, x2, y2) {
       return function(t) {
-        if (t < 0) {
-          if (x1 > 0) {
-            return y1 / x1 * t;
-          } else if (x22 > 0) {
-            return y22 / x22 * t;
-          } else {
-            return 0;
-          }
-        } else if (t > 1) {
-          if (x22 < 1) {
-            return (1 - y22) / (1 - x22) * t + (y22 - x22) / (1 - x22);
-          } else if (x1 < 1) {
-            return (1 - y1) / (1 - x1) * t + (y1 - x1) / (1 - x1);
-          } else {
-            return 1;
-          }
-        } else {
-          return 3 * t * (1 - t) ** 2 * y1 + 3 * t ** 2 * (1 - t) * y22 + t ** 3;
-        }
+        if (t < 0) if (x1 > 0) return y1 / x1 * t;
+        else if (x2 > 0) return y2 / x2 * t;
+        else return 0;
+        else if (t > 1) if (x2 < 1) return (1 - y2) / (1 - x2) * t + (y2 - x2) / (1 - x2);
+        else if (x1 < 1) return (1 - y1) / (1 - x1) * t + (y1 - x1) / (1 - x1);
+        else return 1;
+        else return 3 * t * (1 - t) ** 2 * y1 + 3 * t ** 2 * (1 - t) * y2 + t ** 3;
       };
     },
-    // see https://www.w3.org/TR/css-easing-1/#step-timing-function-algo
     steps: function(steps, stepPosition = "end") {
       stepPosition = stepPosition.split("-").reverse()[0];
       let jumps = steps;
-      if (stepPosition === "none") {
-        --jumps;
-      } else if (stepPosition === "both") {
-        ++jumps;
-      }
+      if (stepPosition === "none") --jumps;
+      else if (stepPosition === "both") ++jumps;
       return (t, beforeFlag = false) => {
         let step = Math.floor(t * steps);
         const jumping = t * step % 1 === 0;
-        if (stepPosition === "start" || stepPosition === "both") {
-          ++step;
-        }
-        if (beforeFlag && jumping) {
-          --step;
-        }
-        if (t >= 0 && step < 0) {
-          step = 0;
-        }
-        if (t <= 1 && step > jumps) {
-          step = jumps;
-        }
+        if (stepPosition === "start" || stepPosition === "both") ++step;
+        if (beforeFlag && jumping) --step;
+        if (t >= 0 && step < 0) step = 0;
+        if (t <= 1 && step > jumps) step = jumps;
         return step / jumps;
       };
     }
@@ -3165,9 +4202,7 @@ var RoomPlan = (() => {
       this.ease = easing[fn] || fn;
     }
     step(from2, to2, pos) {
-      if (typeof from2 !== "number") {
-        return pos < 1 ? from2 : to2;
-      }
+      if (typeof from2 !== "number") return pos < 1 ? from2 : to2;
       return from2 + (to2 - from2) * this.ease(pos);
     }
   };
@@ -3232,9 +4267,7 @@ var RoomPlan = (() => {
       let i = (c.integral || 0) + p * dt;
       const d = (p - (c.error || 0)) / dt;
       const windup = this._windup;
-      if (windup !== false) {
-        i = Math.max(-windup, Math.min(i, windup));
-      }
+      if (windup !== false) i = Math.max(-windup, Math.min(i, windup));
       c.error = p;
       c.integral = i;
       c.done = Math.abs(p) < 1e-3;
@@ -3247,8 +4280,6 @@ var RoomPlan = (() => {
     i: makeSetterGetter("I"),
     d: makeSetterGetter("D")
   });
-
-  // node_modules/@svgdotjs/svg.js/src/utils/pathParser.js
   var segmentParameters = {
     M: 2,
     L: 2,
@@ -3265,12 +4296,20 @@ var RoomPlan = (() => {
     M: function(c, p, p0) {
       p.x = p0.x = c[0];
       p.y = p0.y = c[1];
-      return ["M", p.x, p.y];
+      return [
+        "M",
+        p.x,
+        p.y
+      ];
     },
     L: function(c, p) {
       p.x = c[0];
       p.y = c[1];
-      return ["L", c[0], c[1]];
+      return [
+        "L",
+        c[0],
+        c[1]
+      ];
     },
     H: function(c, p) {
       p.x = c[0];
@@ -3283,22 +4322,46 @@ var RoomPlan = (() => {
     C: function(c, p) {
       p.x = c[4];
       p.y = c[5];
-      return ["C", c[0], c[1], c[2], c[3], c[4], c[5]];
+      return [
+        "C",
+        c[0],
+        c[1],
+        c[2],
+        c[3],
+        c[4],
+        c[5]
+      ];
     },
     S: function(c, p) {
       p.x = c[2];
       p.y = c[3];
-      return ["S", c[0], c[1], c[2], c[3]];
+      return [
+        "S",
+        c[0],
+        c[1],
+        c[2],
+        c[3]
+      ];
     },
     Q: function(c, p) {
       p.x = c[2];
       p.y = c[3];
-      return ["Q", c[0], c[1], c[2], c[3]];
+      return [
+        "Q",
+        c[0],
+        c[1],
+        c[2],
+        c[3]
+      ];
     },
     T: function(c, p) {
       p.x = c[0];
       p.y = c[1];
-      return ["T", c[0], c[1]];
+      return [
+        "T",
+        c[0],
+        c[1]
+      ];
     },
     Z: function(c, p, p0) {
       p.x = p0.x;
@@ -3308,30 +4371,32 @@ var RoomPlan = (() => {
     A: function(c, p) {
       p.x = c[5];
       p.y = c[6];
-      return ["A", c[0], c[1], c[2], c[3], c[4], c[5], c[6]];
+      return [
+        "A",
+        c[0],
+        c[1],
+        c[2],
+        c[3],
+        c[4],
+        c[5],
+        c[6]
+      ];
     }
   };
   var mlhvqtcsaz = "mlhvqtcsaz".split("");
-  for (let i = 0, il = mlhvqtcsaz.length; i < il; ++i) {
-    pathHandlers[mlhvqtcsaz[i]] = /* @__PURE__ */ (function(i2) {
-      return function(c, p, p0) {
-        if (i2 === "H") c[0] = c[0] + p.x;
-        else if (i2 === "V") c[0] = c[0] + p.y;
-        else if (i2 === "A") {
-          c[5] = c[5] + p.x;
-          c[6] = c[6] + p.y;
-        } else {
-          for (let j = 0, jl = c.length; j < jl; ++j) {
-            c[j] = c[j] + (j % 2 ? p.y : p.x);
-          }
-        }
-        return pathHandlers[i2](c, p, p0);
-      };
-    })(mlhvqtcsaz[i].toUpperCase());
-  }
+  for (let i = 0, il = mlhvqtcsaz.length; i < il; ++i) pathHandlers[mlhvqtcsaz[i]] = /* @__PURE__ */ (function(i2) {
+    return function(c, p, p0) {
+      if (i2 === "H") c[0] = c[0] + p.x;
+      else if (i2 === "V") c[0] = c[0] + p.y;
+      else if (i2 === "A") {
+        c[5] = c[5] + p.x;
+        c[6] = c[6] + p.y;
+      } else for (let j = 0, jl = c.length; j < jl; ++j) c[j] = c[j] + (j % 2 ? p.y : p.x);
+      return pathHandlers[i2](c, p, p0);
+    };
+  })(mlhvqtcsaz[i].toUpperCase());
   function makeAbsolut(parser2) {
-    const command = parser2.segment[0];
-    return pathHandlers[command](parser2.segment.slice(1), parser2.p, parser2.p0);
+    return pathHandlers[parser2.segment[0]](parser2.segment.slice(1), parser2.p, parser2.p0);
   }
   function segmentComplete(parser2) {
     return parser2.segment.length && parser2.segment.length - 1 === segmentParameters[parser2.segment[0].toUpperCase()];
@@ -3339,13 +4404,11 @@ var RoomPlan = (() => {
   function startNewSegment(parser2, token) {
     parser2.inNumber && finalizeNumber(parser2, false);
     const pathLetter = isPathLetter.test(token);
-    if (pathLetter) {
-      parser2.segment = [token];
-    } else {
+    if (pathLetter) parser2.segment = [token];
+    else {
       const lastCommand = parser2.lastCommand;
       const small = lastCommand.toLowerCase();
-      const isSmall = lastCommand === small;
-      parser2.segment = [small === "m" ? isSmall ? "l" : "L" : lastCommand];
+      parser2.segment = [small === "m" ? lastCommand === small ? "l" : "L" : lastCommand];
     }
     parser2.inSegment = true;
     parser2.lastCommand = parser2.segment[0];
@@ -3358,15 +4421,11 @@ var RoomPlan = (() => {
     parser2.number = "";
     parser2.pointSeen = false;
     parser2.hasExponent = false;
-    if (segmentComplete(parser2)) {
-      finalizeSegment(parser2);
-    }
+    if (segmentComplete(parser2)) finalizeSegment(parser2);
   }
   function finalizeSegment(parser2) {
     parser2.inSegment = false;
-    if (parser2.absolute) {
-      parser2.segment = makeAbsolut(parser2);
-    }
+    if (parser2.absolute) parser2.segment = makeAbsolut(parser2);
     parser2.segments.push(parser2.segment);
   }
   function isArcFlag(parser2) {
@@ -3378,7 +4437,14 @@ var RoomPlan = (() => {
   function isExponential(parser2) {
     return parser2.lastToken.toUpperCase() === "E";
   }
-  var pathDelimiters = /* @__PURE__ */ new Set([" ", ",", "	", "\n", "\r", "\f"]);
+  var pathDelimiters = /* @__PURE__ */ new Set([
+    " ",
+    ",",
+    "	",
+    "\n",
+    "\r",
+    "\f"
+  ]);
   function pathParser(d, toAbsolute = true) {
     let index = 0;
     let token = "";
@@ -3392,14 +4458,12 @@ var RoomPlan = (() => {
       pointSeen: false,
       hasExponent: false,
       absolute: toAbsolute,
-      p0: new Point(),
-      p: new Point()
+      p0: new Point3(),
+      p: new Point3()
     };
     while (parser2.lastToken = token, token = d.charAt(index++)) {
       if (!parser2.inSegment) {
-        if (startNewSegment(parser2, token)) {
-          continue;
-        }
+        if (startNewSegment(parser2, token)) continue;
       }
       if (token === ".") {
         if (parser2.pointSeen || parser2.hasExponent) {
@@ -3424,9 +4488,7 @@ var RoomPlan = (() => {
         continue;
       }
       if (pathDelimiters.has(token)) {
-        if (parser2.inNumber) {
-          finalizeNumber(parser2, false);
-        }
+        if (parser2.inNumber) finalizeNumber(parser2, false);
         continue;
       }
       if (token === "-" || token === "+") {
@@ -3445,26 +4507,16 @@ var RoomPlan = (() => {
         continue;
       }
       if (isPathLetter.test(token)) {
-        if (parser2.inNumber) {
-          finalizeNumber(parser2, false);
-        } else if (!segmentComplete(parser2)) {
-          throw new Error("parser Error");
-        } else {
-          finalizeSegment(parser2);
-        }
+        if (parser2.inNumber) finalizeNumber(parser2, false);
+        else if (!segmentComplete(parser2)) throw new Error("parser Error");
+        else finalizeSegment(parser2);
         --index;
       }
     }
-    if (parser2.inNumber) {
-      finalizeNumber(parser2, false);
-    }
-    if (parser2.inSegment && segmentComplete(parser2)) {
-      finalizeSegment(parser2);
-    }
+    if (parser2.inNumber) finalizeNumber(parser2, false);
+    if (parser2.inSegment && segmentComplete(parser2)) finalizeSegment(parser2);
     return parser2.segments;
   }
-
-  // node_modules/@svgdotjs/svg.js/src/types/PathArray.js
   function arrayToString(a) {
     let s = "";
     for (let i = 0, il = a.length; i < il; i++) {
@@ -3496,52 +4548,42 @@ var RoomPlan = (() => {
     return s + " ";
   }
   var PathArray = class extends SVGArray {
-    // Get bounding box of path
     bbox() {
       parser().path.setAttribute("d", this.toString());
       return new Box(parser.nodes.path.getBBox());
     }
-    // Move path string
-    move(x5, y5) {
+    move(x2, y2) {
       const box = this.bbox();
-      x5 -= box.x;
-      y5 -= box.y;
-      if (!isNaN(x5) && !isNaN(y5)) {
-        for (let l, i = this.length - 1; i >= 0; i--) {
-          l = this[i][0];
-          if (l === "M" || l === "L" || l === "T") {
-            this[i][1] += x5;
-            this[i][2] += y5;
-          } else if (l === "H") {
-            this[i][1] += x5;
-          } else if (l === "V") {
-            this[i][1] += y5;
-          } else if (l === "C" || l === "S" || l === "Q") {
-            this[i][1] += x5;
-            this[i][2] += y5;
-            this[i][3] += x5;
-            this[i][4] += y5;
-            if (l === "C") {
-              this[i][5] += x5;
-              this[i][6] += y5;
-            }
-          } else if (l === "A") {
-            this[i][6] += x5;
-            this[i][7] += y5;
+      x2 -= box.x;
+      y2 -= box.y;
+      if (!isNaN(x2) && !isNaN(y2)) for (let l, i = this.length - 1; i >= 0; i--) {
+        l = this[i][0];
+        if (l === "M" || l === "L" || l === "T") {
+          this[i][1] += x2;
+          this[i][2] += y2;
+        } else if (l === "H") this[i][1] += x2;
+        else if (l === "V") this[i][1] += y2;
+        else if (l === "C" || l === "S" || l === "Q") {
+          this[i][1] += x2;
+          this[i][2] += y2;
+          this[i][3] += x2;
+          this[i][4] += y2;
+          if (l === "C") {
+            this[i][5] += x2;
+            this[i][6] += y2;
           }
+        } else if (l === "A") {
+          this[i][6] += x2;
+          this[i][7] += y2;
         }
       }
       return this;
     }
-    // Absolutize and parse path to array
     parse(d = "M0 0") {
-      if (Array.isArray(d)) {
-        d = Array.prototype.concat.apply([], d).toString();
-      }
+      if (Array.isArray(d)) d = Array.prototype.concat.apply([], d).toString();
       return pathParser(d);
     }
-    // Resize path string
-    size(width4, height4) {
+    size(width2, height2) {
       const box = this.bbox();
       let i, l;
       box.width = box.width === 0 ? 1 : box.width;
@@ -3549,60 +4591,43 @@ var RoomPlan = (() => {
       for (i = this.length - 1; i >= 0; i--) {
         l = this[i][0];
         if (l === "M" || l === "L" || l === "T") {
-          this[i][1] = (this[i][1] - box.x) * width4 / box.width + box.x;
-          this[i][2] = (this[i][2] - box.y) * height4 / box.height + box.y;
-        } else if (l === "H") {
-          this[i][1] = (this[i][1] - box.x) * width4 / box.width + box.x;
-        } else if (l === "V") {
-          this[i][1] = (this[i][1] - box.y) * height4 / box.height + box.y;
-        } else if (l === "C" || l === "S" || l === "Q") {
-          this[i][1] = (this[i][1] - box.x) * width4 / box.width + box.x;
-          this[i][2] = (this[i][2] - box.y) * height4 / box.height + box.y;
-          this[i][3] = (this[i][3] - box.x) * width4 / box.width + box.x;
-          this[i][4] = (this[i][4] - box.y) * height4 / box.height + box.y;
+          this[i][1] = (this[i][1] - box.x) * width2 / box.width + box.x;
+          this[i][2] = (this[i][2] - box.y) * height2 / box.height + box.y;
+        } else if (l === "H") this[i][1] = (this[i][1] - box.x) * width2 / box.width + box.x;
+        else if (l === "V") this[i][1] = (this[i][1] - box.y) * height2 / box.height + box.y;
+        else if (l === "C" || l === "S" || l === "Q") {
+          this[i][1] = (this[i][1] - box.x) * width2 / box.width + box.x;
+          this[i][2] = (this[i][2] - box.y) * height2 / box.height + box.y;
+          this[i][3] = (this[i][3] - box.x) * width2 / box.width + box.x;
+          this[i][4] = (this[i][4] - box.y) * height2 / box.height + box.y;
           if (l === "C") {
-            this[i][5] = (this[i][5] - box.x) * width4 / box.width + box.x;
-            this[i][6] = (this[i][6] - box.y) * height4 / box.height + box.y;
+            this[i][5] = (this[i][5] - box.x) * width2 / box.width + box.x;
+            this[i][6] = (this[i][6] - box.y) * height2 / box.height + box.y;
           }
         } else if (l === "A") {
-          this[i][1] = this[i][1] * width4 / box.width;
-          this[i][2] = this[i][2] * height4 / box.height;
-          this[i][6] = (this[i][6] - box.x) * width4 / box.width + box.x;
-          this[i][7] = (this[i][7] - box.y) * height4 / box.height + box.y;
+          this[i][1] = this[i][1] * width2 / box.width;
+          this[i][2] = this[i][2] * height2 / box.height;
+          this[i][6] = (this[i][6] - box.x) * width2 / box.width + box.x;
+          this[i][7] = (this[i][7] - box.y) * height2 / box.height + box.y;
         }
       }
       return this;
     }
-    // Convert array to string
     toString() {
       return arrayToString(this);
     }
   };
-
-  // node_modules/@svgdotjs/svg.js/src/animation/Morphable.js
   var getClassForType = (value) => {
     const type = typeof value;
-    if (type === "number") {
-      return SVGNumber;
-    } else if (type === "string") {
-      if (Color.isColor(value)) {
-        return Color;
-      } else if (delimiter.test(value)) {
-        return isPathLetter.test(value) ? PathArray : SVGArray;
-      } else if (numberAndUnit.test(value)) {
-        return SVGNumber;
-      } else {
-        return NonMorphable;
-      }
-    } else if (morphableTypes.indexOf(value.constructor) > -1) {
-      return value.constructor;
-    } else if (Array.isArray(value)) {
-      return SVGArray;
-    } else if (type === "object") {
-      return ObjectBag;
-    } else {
-      return NonMorphable;
-    }
+    if (type === "number") return SVGNumber;
+    else if (type === "string") if (Color.isColor(value)) return Color;
+    else if (delimiter.test(value)) return isPathLetter.test(value) ? PathArray : SVGArray;
+    else if (numberAndUnit.test(value)) return SVGNumber;
+    else return NonMorphable;
+    else if (morphableTypes.indexOf(value.constructor) > -1) return value.constructor;
+    else if (Array.isArray(value)) return SVGArray;
+    else if (type === "object") return ObjectBag;
+    else return NonMorphable;
   };
   var Morphable = class {
     constructor(stepper) {
@@ -3614,24 +4639,15 @@ var RoomPlan = (() => {
       this._morphObj = null;
     }
     at(pos) {
-      return this._morphObj.morph(
-        this._from,
-        this._to,
-        pos,
-        this._stepper,
-        this._context
-      );
+      return this._morphObj.morph(this._from, this._to, pos, this._stepper, this._context);
     }
     done() {
-      const complete = this._context.map(this._stepper.done).reduce(function(last, curr) {
+      return this._context.map(this._stepper.done).reduce(function(last, curr) {
         return last && curr;
       }, true);
-      return complete;
     }
     from(val) {
-      if (val == null) {
-        return this._from;
-      }
+      if (val == null) return this._from;
       this._from = this._set(val);
       return this;
     }
@@ -3641,30 +4657,20 @@ var RoomPlan = (() => {
       return this;
     }
     to(val) {
-      if (val == null) {
-        return this._to;
-      }
+      if (val == null) return this._to;
       this._to = this._set(val);
       return this;
     }
     type(type) {
-      if (type == null) {
-        return this._type;
-      }
+      if (type == null) return this._type;
       this._type = type;
       return this;
     }
     _set(value) {
-      if (!this._type) {
-        this.type(getClassForType(value));
-      }
+      if (!this._type) this.type(getClassForType(value));
       let result = new this._type(value);
-      if (this._type === Color) {
-        result = this._to ? result[this._to[4]]() : this._from ? result[this._from[4]]() : result;
-      }
-      if (this._type === ObjectBag) {
-        result = this._to ? result.align(this._to) : this._from ? result.align(this._from) : result;
-      }
+      if (this._type === Color) result = this._to ? result[this._to[4]]() : this._from ? result[this._from[4]]() : result;
+      if (this._type === ObjectBag) result = this._to ? result.align(this._to) : this._from ? result.align(this._from) : result;
       result = result.toConsumable();
       this._morphObj = this._morphObj || new this._type();
       this._context = this._context || Array.apply(null, Array(result.length)).map(Object).map(function(o) {
@@ -3690,24 +4696,22 @@ var RoomPlan = (() => {
       return this.value;
     }
   };
-  var TransformBag = class _TransformBag {
+  var TransformBag = class TransformBag2 {
     constructor(...args) {
       this.init(...args);
     }
     init(obj) {
-      if (Array.isArray(obj)) {
-        obj = {
-          scaleX: obj[0],
-          scaleY: obj[1],
-          shear: obj[2],
-          rotate: obj[3],
-          translateX: obj[4],
-          translateY: obj[5],
-          originX: obj[6],
-          originY: obj[7]
-        };
-      }
-      Object.assign(this, _TransformBag.defaults, obj);
+      if (Array.isArray(obj)) obj = {
+        scaleX: obj[0],
+        scaleY: obj[1],
+        shear: obj[2],
+        rotate: obj[3],
+        translateX: obj[4],
+        translateY: obj[5],
+        originX: obj[6],
+        originY: obj[7]
+      };
+      Object.assign(this, TransformBag2.defaults, obj);
       return this;
     }
     toArray() {
@@ -3753,19 +4757,10 @@ var RoomPlan = (() => {
           i += values[i + 2] + 2;
           continue;
         }
-        if (!other[i + 1]) {
-          return this;
-        }
+        if (!other[i + 1]) return this;
         const defaultObject = new other[i + 1]().toArray();
         const toDelete = values[i + 2] + 3;
-        values.splice(
-          i,
-          toDelete,
-          other[i],
-          other[i + 1],
-          other[i + 2],
-          ...defaultObject
-        );
+        values.splice(i, toDelete, other[i], other[i + 1], other[i + 2], ...defaultObject);
         i += values[i + 2] + 2;
       }
       return this;
@@ -3781,7 +4776,12 @@ var RoomPlan = (() => {
       for (const i in objOrArr) {
         const Type = getClassForType(objOrArr[i]);
         const val = new Type(objOrArr[i]).toArray();
-        entries.push([i, Type, val.length, ...val]);
+        entries.push([
+          i,
+          Type,
+          val.length,
+          ...val
+        ]);
       }
       entries.sort(sortByKey);
       this.values = entries.reduce((last, curr) => last.concat(curr), []);
@@ -3797,13 +4797,16 @@ var RoomPlan = (() => {
         const key = arr.shift();
         const Type = arr.shift();
         const num = arr.shift();
-        const values = arr.splice(0, num);
-        obj[key] = new Type(values);
+        obj[key] = new Type(arr.splice(0, num));
       }
       return obj;
     }
   };
-  var morphableTypes = [NonMorphable, TransformBag, ObjectBag];
+  var morphableTypes = [
+    NonMorphable,
+    TransformBag,
+    ObjectBag
+  ];
   function registerMorphableType(type = []) {
     morphableTypes.push(...[].concat(type));
   }
@@ -3827,74 +4830,51 @@ var RoomPlan = (() => {
       }
     });
   }
-
-  // node_modules/@svgdotjs/svg.js/src/elements/Path.js
   var Path = class extends Shape {
-    // Initialize node
     constructor(node, attrs2 = node) {
       super(nodeOrNew("path", node), attrs2);
     }
-    // Get array
     array() {
       return this._array || (this._array = new PathArray(this.attr("d")));
     }
-    // Clear array cache
     clear() {
       delete this._array;
       return this;
     }
-    // Set height of element
-    height(height4) {
-      return height4 == null ? this.bbox().height : this.size(this.bbox().width, height4);
+    height(height2) {
+      return height2 == null ? this.bbox().height : this.size(this.bbox().width, height2);
     }
-    // Move by left top corner
-    move(x5, y5) {
-      return this.attr("d", this.array().move(x5, y5));
+    move(x2, y2) {
+      return this.attr("d", this.array().move(x2, y2));
     }
-    // Plot new path
     plot(d) {
-      return d == null ? this.array() : this.clear().attr(
-        "d",
-        typeof d === "string" ? d : this._array = new PathArray(d)
-      );
+      return d == null ? this.array() : this.clear().attr("d", typeof d === "string" ? d : this._array = new PathArray(d));
     }
-    // Set element size to given width and height
-    size(width4, height4) {
-      const p = proportionalSize(this, width4, height4);
+    size(width2, height2) {
+      const p = proportionalSize(this, width2, height2);
       return this.attr("d", this.array().size(p.width, p.height));
     }
-    // Set width of element
-    width(width4) {
-      return width4 == null ? this.bbox().width : this.size(width4, this.bbox().height);
+    width(width2) {
+      return width2 == null ? this.bbox().width : this.size(width2, this.bbox().height);
     }
-    // Move by left top corner over x-axis
-    x(x5) {
-      return x5 == null ? this.bbox().x : this.move(x5, this.bbox().y);
+    x(x2) {
+      return x2 == null ? this.bbox().x : this.move(x2, this.bbox().y);
     }
-    // Move by left top corner over y-axis
-    y(y5) {
-      return y5 == null ? this.bbox().y : this.move(this.bbox().x, y5);
+    y(y2) {
+      return y2 == null ? this.bbox().y : this.move(this.bbox().x, y2);
     }
   };
   Path.prototype.MorphArray = PathArray;
-  registerMethods({
-    Container: {
-      // Create a wrapped path element
-      path: wrapWithAttrCheck(function(d) {
-        return this.put(new Path()).plot(d || new PathArray());
-      })
-    }
-  });
+  registerMethods({ Container: { path: wrapWithAttrCheck(function(d) {
+    return this.put(new Path()).plot(d || new PathArray());
+  }) } });
   register(Path, "Path");
-
-  // node_modules/@svgdotjs/svg.js/src/modules/core/poly.js
-  var poly_exports = {};
-  __export(poly_exports, {
+  var poly_exports = /* @__PURE__ */ __exportAll({
     array: () => array,
     clear: () => clear,
-    move: () => move,
+    move: () => move$2,
     plot: () => plot,
-    size: () => size
+    size: () => size$1
   });
   function array() {
     return this._array || (this._array = new PointArray(this.attr("points")));
@@ -3903,92 +4883,68 @@ var RoomPlan = (() => {
     delete this._array;
     return this;
   }
-  function move(x5, y5) {
-    return this.attr("points", this.array().move(x5, y5));
+  function move$2(x2, y2) {
+    return this.attr("points", this.array().move(x2, y2));
   }
   function plot(p) {
-    return p == null ? this.array() : this.clear().attr(
-      "points",
-      typeof p === "string" ? p : this._array = new PointArray(p)
-    );
+    return p == null ? this.array() : this.clear().attr("points", typeof p === "string" ? p : this._array = new PointArray(p));
   }
-  function size(width4, height4) {
-    const p = proportionalSize(this, width4, height4);
+  function size$1(width2, height2) {
+    const p = proportionalSize(this, width2, height2);
     return this.attr("points", this.array().size(p.width, p.height));
   }
-
-  // node_modules/@svgdotjs/svg.js/src/elements/Polygon.js
   var Polygon = class extends Shape {
-    // Initialize node
     constructor(node, attrs2 = node) {
       super(nodeOrNew("polygon", node), attrs2);
     }
   };
-  registerMethods({
-    Container: {
-      // Create a wrapped polygon element
-      polygon: wrapWithAttrCheck(function(p) {
-        return this.put(new Polygon()).plot(p || new PointArray());
-      })
-    }
-  });
+  registerMethods({ Container: { polygon: wrapWithAttrCheck(function(p) {
+    return this.put(new Polygon()).plot(p || new PointArray());
+  }) } });
   extend(Polygon, pointed_exports);
   extend(Polygon, poly_exports);
   register(Polygon, "Polygon");
-
-  // node_modules/@svgdotjs/svg.js/src/elements/Polyline.js
   var Polyline = class extends Shape {
-    // Initialize node
     constructor(node, attrs2 = node) {
       super(nodeOrNew("polyline", node), attrs2);
     }
   };
-  registerMethods({
-    Container: {
-      // Create a wrapped polygon element
-      polyline: wrapWithAttrCheck(function(p) {
-        return this.put(new Polyline()).plot(p || new PointArray());
-      })
-    }
-  });
+  registerMethods({ Container: { polyline: wrapWithAttrCheck(function(p) {
+    return this.put(new Polyline()).plot(p || new PointArray());
+  }) } });
   extend(Polyline, pointed_exports);
   extend(Polyline, poly_exports);
   register(Polyline, "Polyline");
-
-  // node_modules/@svgdotjs/svg.js/src/elements/Rect.js
   var Rect = class extends Shape {
-    // Initialize node
     constructor(node, attrs2 = node) {
       super(nodeOrNew("rect", node), attrs2);
     }
   };
-  extend(Rect, { rx, ry });
-  registerMethods({
-    Container: {
-      // Create a rect element
-      rect: wrapWithAttrCheck(function(width4, height4) {
-        return this.put(new Rect()).size(width4, height4);
-      })
-    }
+  extend(Rect, {
+    rx,
+    ry
   });
+  registerMethods({ Container: { rect: wrapWithAttrCheck(function(width2, height2) {
+    return this.put(new Rect()).size(width2, height2);
+  }) } });
   register(Rect, "Rect");
-
-  // node_modules/@svgdotjs/svg.js/src/animation/Queue.js
   var Queue = class {
     constructor() {
       this._first = null;
       this._last = null;
     }
-    // Shows us the first item in the list
     first() {
       return this._first && this._first.value;
     }
-    // Shows us the last item in the list
     last() {
       return this._last && this._last.value;
     }
     push(value) {
-      const item = typeof value.next !== "undefined" ? value : { value, next: null, prev: null };
+      const item = typeof value.next !== "undefined" ? value : {
+        value,
+        next: null,
+        prev: null
+      };
       if (this._last) {
         item.prev = this._last;
         this._last.next = item;
@@ -3999,7 +4955,6 @@ var RoomPlan = (() => {
       }
       return item;
     }
-    // Removes the item that was returned from the push
     remove(item) {
       if (item.prev) item.prev.next = item.next;
       if (item.next) item.next.prev = item.prev;
@@ -4017,36 +4972,30 @@ var RoomPlan = (() => {
       return remove.value;
     }
   };
-
-  // node_modules/@svgdotjs/svg.js/src/animation/Animator.js
   var Animator = {
     nextDraw: null,
     frames: new Queue(),
     timeouts: new Queue(),
     immediates: new Queue(),
     timer: () => globals.window.performance || globals.window.Date,
-    transforms: [],
     frame(fn) {
       const node = Animator.frames.push({ run: fn });
-      if (Animator.nextDraw === null) {
-        Animator.nextDraw = globals.window.requestAnimationFrame(Animator._draw);
-      }
+      if (Animator.nextDraw === null) Animator.nextDraw = globals.window.requestAnimationFrame(Animator._draw);
       return node;
     },
     timeout(fn, delay) {
       delay = delay || 0;
       const time = Animator.timer().now() + delay;
-      const node = Animator.timeouts.push({ run: fn, time });
-      if (Animator.nextDraw === null) {
-        Animator.nextDraw = globals.window.requestAnimationFrame(Animator._draw);
-      }
+      const node = Animator.timeouts.push({
+        run: fn,
+        time
+      });
+      if (Animator.nextDraw === null) Animator.nextDraw = globals.window.requestAnimationFrame(Animator._draw);
       return node;
     },
     immediate(fn) {
       const node = Animator.immediates.push(fn);
-      if (Animator.nextDraw === null) {
-        Animator.nextDraw = globals.window.requestAnimationFrame(Animator._draw);
-      }
+      if (Animator.nextDraw === null) Animator.nextDraw = globals.window.requestAnimationFrame(Animator._draw);
       return node;
     },
     cancelFrame(node) {
@@ -4059,39 +5008,32 @@ var RoomPlan = (() => {
       node != null && Animator.immediates.remove(node);
     },
     _draw(now) {
-      let nextTimeout = null;
-      const lastTimeout = Animator.timeouts.last();
-      while (nextTimeout = Animator.timeouts.shift()) {
-        if (now >= nextTimeout.time) {
-          nextTimeout.run();
-        } else {
-          Animator.timeouts.push(nextTimeout);
+      try {
+        let nextTimeout = null;
+        const lastTimeout = Animator.timeouts.last();
+        while (nextTimeout = Animator.timeouts.shift()) {
+          if (now >= nextTimeout.time) nextTimeout.run();
+          else Animator.timeouts.push(nextTimeout);
+          if (nextTimeout === lastTimeout) break;
         }
-        if (nextTimeout === lastTimeout) break;
+        let nextFrame = null;
+        const lastFrame = Animator.frames.last();
+        while (nextFrame !== lastFrame && (nextFrame = Animator.frames.shift())) nextFrame.run(now);
+        let nextImmediate = null;
+        while (nextImmediate = Animator.immediates.shift()) nextImmediate();
+      } finally {
+        const pending = Animator.timeouts.first() || Animator.frames.first() || Animator.immediates.first();
+        Animator.nextDraw = pending ? globals.window.requestAnimationFrame(Animator._draw) : null;
       }
-      let nextFrame = null;
-      const lastFrame = Animator.frames.last();
-      while (nextFrame !== lastFrame && (nextFrame = Animator.frames.shift())) {
-        nextFrame.run(now);
-      }
-      let nextImmediate = null;
-      while (nextImmediate = Animator.immediates.shift()) {
-        nextImmediate();
-      }
-      Animator.nextDraw = Animator.timeouts.first() || Animator.frames.first() ? globals.window.requestAnimationFrame(Animator._draw) : null;
     }
   };
-  var Animator_default = Animator;
-
-  // node_modules/@svgdotjs/svg.js/src/animation/Timeline.js
   var makeSchedule = function(runnerInfo) {
     const start = runnerInfo.start;
     const duration = runnerInfo.runner.duration();
-    const end = start + duration;
     return {
       start,
       duration,
-      end,
+      end: start + duration,
       runner: runnerInfo.runner
     };
   };
@@ -4100,7 +5042,6 @@ var RoomPlan = (() => {
     return (w.performance || w.Date).now();
   };
   var Timeline = class extends EventTarget {
-    // Construct a new timeline on the given element
     constructor(timeSource = defaultSource) {
       super();
       this._timeSource = timeSource;
@@ -4110,15 +5051,18 @@ var RoomPlan = (() => {
       return !!this._nextFrame;
     }
     finish() {
-      this.time(this.getEndTimeOfTimeline() + 1);
+      this._finishing = true;
+      try {
+        this.time(this.getEndTimeOfTimeline() + 1);
+      } finally {
+        this._finishing = false;
+      }
       return this.pause();
     }
-    // Calculates the end of the timeline
     getEndTime() {
       const lastRunnerInfo = this.getLastRunnerInfo();
       const lastDuration = lastRunnerInfo ? lastRunnerInfo.runner.duration() : 0;
-      const lastStartTime = lastRunnerInfo ? lastRunnerInfo.start : this._time;
-      return lastStartTime + lastDuration;
+      return (lastRunnerInfo ? lastRunnerInfo.start : this._time) + lastDuration;
     }
     getEndTimeOfTimeline() {
       const endTimes = this._runners.map((i) => i.start + i.runner.duration());
@@ -4149,22 +5093,17 @@ var RoomPlan = (() => {
       const positive = Math.abs(currentSpeed);
       return this.speed(yes ? -positive : positive);
     }
-    // schedules a runner on the timeline
     schedule(runner, delay, when) {
-      if (runner == null) {
-        return this._runners.map(makeSchedule);
-      }
+      if (runner == null) return this._runners.map(makeSchedule);
       let absoluteStartTime = 0;
       const endTime = this.getEndTime();
       delay = delay || 0;
-      if (when == null || when === "last" || when === "after") {
-        absoluteStartTime = endTime;
-      } else if (when === "absolute" || when === "start") {
+      if (when == null || when === "last" || when === "after") absoluteStartTime = endTime;
+      else if (when === "absolute" || when === "start") {
         absoluteStartTime = delay;
         delay = 0;
-      } else if (when === "now") {
-        absoluteStartTime = this._time;
-      } else if (when === "relative") {
+      } else if (when === "now") absoluteStartTime = this._time;
+      else if (when === "relative") {
         const runnerInfo2 = this.getRunnerInfoById(runner.id);
         if (runnerInfo2) {
           absoluteStartTime = runnerInfo2.start + delay;
@@ -4172,13 +5111,11 @@ var RoomPlan = (() => {
         }
       } else if (when === "with-last") {
         const lastRunnerInfo = this.getLastRunnerInfo();
-        const lastStartTime = lastRunnerInfo ? lastRunnerInfo.start : this._time;
-        absoluteStartTime = lastStartTime;
-      } else {
-        throw new Error('Invalid value for the "when" parameter');
-      }
+        absoluteStartTime = lastRunnerInfo ? lastRunnerInfo.start : this._time;
+      } else throw new Error('Invalid value for the "when" parameter');
       runner.unschedule();
       runner.timeline(this);
+      runner._retired = false;
       const persist = runner.persist();
       const runnerInfo = {
         persist: persist === null ? this._persist : persist,
@@ -4186,6 +5123,7 @@ var RoomPlan = (() => {
         runner
       };
       this._lastRunnerId = runner.id;
+      runner._runnerInfo = runnerInfo;
       this._runners.push(runnerInfo);
       this._runners.sort((a, b) => a.start - b.start);
       this._runnerIds = this._runners.map((info) => info.runner.id);
@@ -4214,32 +5152,30 @@ var RoomPlan = (() => {
       this._time = time;
       return this._continue(true);
     }
-    // Remove the runner from this timeline
     unschedule(runner) {
       const index = this._runnerIds.indexOf(runner.id);
       if (index < 0) return this;
       this._runners.splice(index, 1);
       this._runnerIds.splice(index, 1);
       runner.timeline(null);
+      runner._runnerInfo = null;
+      runner._retired = true;
       return this;
     }
-    // Makes sure, that after pausing the time doesn't jump
     updateTime() {
-      if (!this.active()) {
-        this._lastSourceTime = this._timeSource();
-      }
+      if (!this.active()) this._lastSourceTime = this._timeSource();
       return this;
     }
-    // Checks if we are running and continues the animation
     _continue(immediateStep = false) {
-      Animator_default.cancelFrame(this._nextFrame);
+      Animator.cancelFrame(this._nextFrame);
       this._nextFrame = null;
       if (immediateStep) return this._stepImmediate();
       if (this._paused) return this;
-      this._nextFrame = Animator_default.frame(this._step);
+      this._nextFrame = Animator.frame(this._step);
       return this;
     }
     _stepFn(immediateStep = false) {
+      const generation = this._generation;
       const time = this._timeSource();
       let dtSource = time - this._lastSourceTime;
       if (immediateStep) dtSource = 0;
@@ -4251,53 +5187,57 @@ var RoomPlan = (() => {
       }
       this._lastStepTime = this._time;
       this.fire("time", this._time);
-      for (let k = this._runners.length; k--; ) {
-        const runnerInfo = this._runners[k];
+      const scheduled = this._runners.slice();
+      for (let k = scheduled.length; k--; ) {
+        const runnerInfo = scheduled[k];
+        if (runnerInfo.runner._runnerInfo !== runnerInfo) continue;
         const runner = runnerInfo.runner;
-        const dtToStart = this._time - runnerInfo.start;
-        if (dtToStart <= 0) {
-          runner.reset();
-        }
+        if (this._time - runnerInfo.start < 0) runner.reset(true);
       }
       let runnersLeft = false;
-      for (let i = 0, len = this._runners.length; i < len; i++) {
-        const runnerInfo = this._runners[i];
+      for (const runnerInfo of this._runners.slice()) {
+        if (runnerInfo.runner._runnerInfo !== runnerInfo) continue;
         const runner = runnerInfo.runner;
         let dt = dtTime;
         const dtToStart = this._time - runnerInfo.start;
-        if (dtToStart <= 0) {
+        if (dtToStart < 0) {
           runnersLeft = true;
           continue;
-        } else if (dtToStart < dt) {
-          dt = dtToStart;
-        }
-        if (!runner.active()) continue;
-        const finished = runner.step(dt).done;
-        if (!finished) {
+        } else if (dtToStart === 0) {
+          runner.reset();
           runnersLeft = true;
-        } else if (runnerInfo.persist !== true) {
-          const endTime = runner.duration() - runner.time() + this._time;
-          if (endTime + runnerInfo.persist < this._time) {
-            runner.unschedule();
-            --i;
-            --len;
-          }
+          continue;
+        } else if (dtToStart < dt) dt = dtToStart;
+        if (!runner.active()) continue;
+        const finished = (this._finishing && runner._isDeclarative ? runner.finish() : runner.step(dt)).done;
+        if (runner._runnerInfo !== runnerInfo) continue;
+        if (!finished) runnersLeft = true;
+        else if (runnerInfo.persist !== true) {
+          if (runner.duration() - runner.time() + this._time + runnerInfo.persist <= this._time) runner.unschedule();
         }
       }
-      if (runnersLeft && !(this._speed < 0 && this._time === 0) || this._runnerIds.length && this._speed < 0 && this._time > 0) {
-        this._continue();
-      } else {
+      if (generation !== this._generation) return this;
+      if (!runnersLeft) runnersLeft = this._runners.some(({ start, runner }) => start >= this._time || runner.active() && !runner.done);
+      if (runnersLeft && !(this._speed < 0 && this._time === 0) || this._runnerIds.length && this._speed < 0 && this._time > 0) this._continue();
+      else {
         this.pause();
         this.fire("finished");
       }
       return this;
     }
     terminate() {
+      Animator.cancelFrame(this._nextFrame);
+      this._generation = (this._generation || 0) + 1;
       this._startTime = 0;
       this._speed = 1;
       this._persist = 0;
+      for (const { runner } of this._runners || []) {
+        runner._retired = true;
+        runner._runnerInfo = null;
+      }
       this._nextFrame = null;
       this._paused = true;
+      this._finishing = false;
       this._runners = [];
       this._runnerIds = [];
       this._lastRunnerId = -1;
@@ -4308,29 +5248,24 @@ var RoomPlan = (() => {
       this._stepImmediate = this._stepFn.bind(this, true);
     }
   };
-  registerMethods({
-    Element: {
-      timeline: function(timeline2) {
-        if (timeline2 == null) {
-          this._timeline = this._timeline || new Timeline();
-          return this._timeline;
-        } else {
-          this._timeline = timeline2;
-          return this;
-        }
-      }
+  registerMethods({ Element: { timeline: function(timeline2) {
+    if (timeline2 == null) {
+      this._timeline = this._timeline || new Timeline();
+      return this._timeline;
+    } else {
+      this._timeline = timeline2;
+      return this;
     }
-  });
-
-  // node_modules/@svgdotjs/svg.js/src/animation/Runner.js
-  var Runner = class _Runner extends EventTarget {
+  } } });
+  var Runner = class Runner2 extends EventTarget {
     constructor(options) {
       super();
-      this.id = _Runner.id++;
+      this.id = Runner2.id++;
       options = options == null ? timeline.duration : options;
       options = typeof options === "function" ? new Controller(options) : options;
       this._element = null;
       this._timeline = null;
+      this._runnerInfo = null;
       this.done = false;
       this._queue = [];
       this._duration = typeof options === "number" && options;
@@ -4342,14 +5277,15 @@ var RoomPlan = (() => {
       this._lastTime = 0;
       this._reseted = true;
       this.transforms = new Matrix();
-      this.transformId = 1;
-      this._haveReversed = false;
+      this._isAbsoluteTransform = false;
+      this._hasTransform = false;
+      this._transformInitialised = false;
+      this._transformActive = false;
+      this._retired = false;
       this._reverse = false;
-      this._loopsDone = 0;
       this._swing = false;
       this._wait = 0;
       this._times = 1;
-      this._frameId = null;
       this._persist = this._isDeclarative ? true : null;
     }
     static sanitise(duration, delay, when) {
@@ -4381,21 +5317,18 @@ var RoomPlan = (() => {
       this.enabled = enabled;
       return this;
     }
-    /*
-    Private Methods
-    ===============
-    Methods that shouldn't be used externally
-    */
     addTransform(transform2) {
       this.transforms.lmultiplyO(transform2);
+      this._transformInitialised = true;
+      this._transformActive = true;
       return this;
     }
     after(fn) {
       return this.on("finished", fn);
     }
     animate(duration, delay, when) {
-      const o = _Runner.sanitise(duration, delay, when);
-      const runner = new _Runner(o.duration);
+      const o = Runner2.sanitise(duration, delay, when);
+      const runner = new Runner2(o.duration);
       if (this._timeline) runner.timeline(this._timeline);
       if (this._element) runner.element(this._element);
       return runner.loop(o).schedule(o.delay, o.when);
@@ -4403,14 +5336,6 @@ var RoomPlan = (() => {
     clearTransform() {
       this.transforms = new Matrix();
       return this;
-    }
-    // TODO: Keep track of all transformations so that deletion is faster
-    clearTransformsFromQueue() {
-      if (!this.done || !this._timeline || !this._timeline._runnerIds.includes(this.id)) {
-        this._queue = this._queue.filter((item) => {
-          return !item.isTransform;
-        });
-      }
     }
     delay(delay) {
       return this.animate(0, delay);
@@ -4425,12 +5350,6 @@ var RoomPlan = (() => {
       this._stepper = new Ease(fn);
       return this;
     }
-    /*
-    Runner Definitions
-    ==================
-    These methods help us define the runtime behaviour of the Runner or they
-    help us make new runners from the current runner
-    */
     element(element) {
       if (element == null) return this._element;
       this._element = element;
@@ -4438,7 +5357,11 @@ var RoomPlan = (() => {
       return this;
     }
     finish() {
-      return this.step(Infinity);
+      if (!this._isDeclarative) return this.time(this.duration());
+      const time = this._time;
+      this.step(Infinity);
+      this._time = time;
+      return this;
     }
     loop(times, swing, wait) {
       if (typeof times === "object") {
@@ -4449,17 +5372,14 @@ var RoomPlan = (() => {
       this._times = times || Infinity;
       this._swing = swing || false;
       this._wait = wait || 0;
-      if (this._times === true) {
-        this._times = Infinity;
-      }
+      if (this._times === true) this._times = Infinity;
       return this;
     }
     loops(p) {
       const loopDuration = this._duration + this._wait;
       if (p == null) {
         const loopsDone = Math.floor(this._time / loopDuration);
-        const relativeTime = this._time - loopsDone * loopDuration;
-        const position2 = relativeTime / this._duration;
+        const position2 = (this._time - loopsDone * loopDuration) / this._duration;
         return Math.min(loopsDone + position2, this._times);
       }
       const whole = Math.floor(p);
@@ -4473,7 +5393,7 @@ var RoomPlan = (() => {
       return this;
     }
     position(p) {
-      const x5 = this._time;
+      const x2 = this._time;
       const d = this._duration;
       const w = this._wait;
       const t = this._times;
@@ -4481,35 +5401,27 @@ var RoomPlan = (() => {
       const r = this._reverse;
       let position2;
       if (p == null) {
-        const f = function(x6) {
-          const swinging = s * Math.floor(x6 % (2 * (w + d)) / (w + d));
+        const f = function(x3) {
+          const swinging = s * Math.floor(x3 % (2 * (w + d)) / (w + d));
           const backwards = swinging && !r || !swinging && r;
-          const uncliped = Math.pow(-1, backwards) * (x6 % (w + d)) / d + backwards;
-          const clipped = Math.max(Math.min(uncliped, 1), 0);
-          return clipped;
+          const uncliped = Math.pow(-1, backwards) * (x3 % (w + d)) / d + backwards;
+          return Math.max(Math.min(uncliped, 1), 0);
         };
         const endTime = t * (w + d) - w;
-        position2 = x5 <= 0 ? Math.round(f(1e-5)) : x5 < endTime ? f(x5) : Math.round(f(endTime - 1e-5));
+        position2 = x2 <= 0 ? Math.round(f(1e-5)) : x2 < endTime ? f(x2) : Math.round(f(endTime - 1e-5));
         return position2;
       }
       const loopsDone = Math.floor(this.loops());
       const swingForward = s && loopsDone % 2 === 0;
-      const forwards = swingForward && !r || r && swingForward;
-      position2 = loopsDone + (forwards ? p : 1 - p);
+      position2 = loopsDone + (swingForward && !r || r && swingForward ? p : 1 - p);
       return this.loops(position2);
     }
     progress(p) {
-      if (p == null) {
-        return Math.min(1, this._time / this.duration());
-      }
+      if (p == null) return Math.min(1, this._time / this.duration());
       return this.time(p * this.duration());
     }
-    /*
-    Basic Functionality
-    ===================
-    These methods allow us to attach basic functions to the runner directly
-    */
     queue(initFn, runFn, retargetFn, isTransform) {
+      if (this._isDeclarative) this.done = false;
       this._queue.push({
         initialiser: initFn || noop,
         runner: runFn || noop,
@@ -4518,14 +5430,31 @@ var RoomPlan = (() => {
         initialised: false,
         finished: false
       });
-      const timeline2 = this.timeline();
-      timeline2 && this.timeline()._continue();
+      this.timeline() && this.timeline()._continue();
       return this;
     }
-    reset() {
-      if (this._reseted) return this;
-      this.time(0);
-      this._reseted = true;
+    reset(deactivateTransform = false) {
+      if (this._reseted) {
+        const transformActive = !deactivateTransform && this._hasTransform && this.position() !== 0;
+        if (transformActive && !this._transformInitialised) {
+          this.step(0);
+          this._reseted = true;
+          return this;
+        }
+        if (transformActive !== this._transformActive) {
+          this._transformActive = transformActive;
+          this._element && this._element._addRunner(this);
+        }
+        return this;
+      }
+      if (!this._reseted) {
+        this.time(0);
+        this._reseted = true;
+      }
+      if (deactivateTransform && this._transformActive) {
+        this._transformActive = false;
+        this._element && this._element._addRunner(this);
+      }
       return this;
     }
     reverse(reverse) {
@@ -4538,14 +5467,13 @@ var RoomPlan = (() => {
         delay = timeline2;
         timeline2 = this.timeline();
       }
-      if (!timeline2) {
-        throw Error("Runner cannot be scheduled without timeline");
-      }
+      if (!timeline2) throw Error("Runner cannot be scheduled without timeline");
       timeline2.schedule(this, delay, when);
       return this;
     }
     step(dt) {
       if (!this.enabled) return this;
+      const wasDone = this.done;
       dt = dt == null ? 16 : dt;
       this._time += dt;
       const position2 = this.position();
@@ -4553,36 +5481,27 @@ var RoomPlan = (() => {
       this._lastPosition = position2;
       const duration = this.duration();
       const justStarted = this._lastTime <= 0 && this._time > 0;
-      const justFinished = this._lastTime < duration && this._time >= duration;
       this._lastTime = this._time;
-      if (justStarted) {
-        this.fire("start", this);
-      }
+      if (justStarted) this.fire("start", this);
       const declarative = this._isDeclarative;
-      this.done = !declarative && !justFinished && this._time >= duration;
+      this.done = !declarative && this._time >= duration;
       this._reseted = false;
+      const transformActive = this._hasTransform && (this._time > 0 || position2 !== 0);
+      this._transformActive = transformActive;
       let converged = false;
       if (running || declarative) {
         this._initialise(running);
         this.transforms = new Matrix();
         converged = this._run(declarative ? dt : position2);
+        this._transformActive = transformActive;
         this.fire("step", this);
       }
       this.done = this.done || converged && declarative;
-      if (justFinished) {
-        this.fire("finished", this);
-      }
+      if (this.done && !wasDone) this.fire("finished", this);
       return this;
     }
-    /*
-    Runner animation methods
-    ========================
-    Control how the animation plays
-    */
     time(time) {
-      if (time == null) {
-        return this._time;
-      }
+      if (time == null) return this._time;
       const dt = time - this._time;
       this.step(dt);
       return this;
@@ -4597,7 +5516,6 @@ var RoomPlan = (() => {
       timeline2 && timeline2.unschedule(this);
       return this;
     }
-    // Run each initialise function in the runner if required
     _initialise(running) {
       if (!running && !this._isDeclarative) return;
       for (let i = 0, len = this._queue.length; i < len; ++i) {
@@ -4610,7 +5528,6 @@ var RoomPlan = (() => {
         }
       }
     }
-    // Save a morpher to the morpher list so that we can retarget it later
     _rememberMorpher(method, morpher) {
       this._history[method] = {
         morpher,
@@ -4621,19 +5538,17 @@ var RoomPlan = (() => {
         timeline2 && timeline2.play();
       }
     }
-    // Try to set the target for a morpher if the morpher exists, otherwise
-    // Run each run function for the position or dt given
     _run(positionOrDt) {
       let allfinished = true;
       for (let i = 0, len = this._queue.length; i < len; ++i) {
         const current = this._queue[i];
+        if (this._isDeclarative && current.finished && !current.isTransform) continue;
         const converged = current.runner.call(this, positionOrDt);
         current.finished = current.finished || converged === true;
         allfinished = allfinished && current.finished;
       }
       return allfinished;
     }
-    // do nothing and return false
     _tryRetarget(method, target, extra) {
       if (this._history[method]) {
         if (!this._history[method].caller.initialised) {
@@ -4641,12 +5556,10 @@ var RoomPlan = (() => {
           this._queue.splice(index, 1);
           return false;
         }
-        if (this._history[method].caller.retarget) {
-          this._history[method].caller.retarget.call(this, target, extra);
-        } else {
-          this._history[method].morpher.to(target);
-        }
+        if (this._history[method].caller.retarget) this._history[method].caller.retarget.call(this, target, extra);
+        else this._history[method].morpher.to(target);
         this._history[method].caller.finished = false;
+        if (this._isDeclarative) this.done = false;
         const timeline2 = this.timeline();
         timeline2 && timeline2.play();
         return true;
@@ -4656,210 +5569,165 @@ var RoomPlan = (() => {
   };
   Runner.id = 0;
   var FakeRunner = class {
-    constructor(transforms2 = new Matrix(), id = -1, done = true) {
+    constructor(transforms2 = new Matrix(), id = -1, done = true, isAbsoluteTransform = false) {
       this.transforms = transforms2;
       this.id = id;
       this.done = done;
-    }
-    clearTransformsFromQueue() {
+      this._isAbsoluteTransform = isAbsoluteTransform;
+      this._transformActive = true;
+      this._retired = true;
     }
   };
-  extend([Runner, FakeRunner], {
-    mergeWith(runner) {
-      return new FakeRunner(
-        runner.transforms.lmultiply(this.transforms),
-        runner.id
-      );
-    }
-  });
+  extend([Runner, FakeRunner], { mergeWith(runner) {
+    return new FakeRunner(this._isAbsoluteTransform ? this.transforms : runner.transforms.lmultiply(this.transforms), runner.id, true, runner._isAbsoluteTransform || this._isAbsoluteTransform);
+  } });
   var lmultiply = (last, curr) => last.lmultiplyO(curr);
   var getRunnerTransform = (runner) => runner.transforms;
+  var isActiveTransform = (runner) => runner._transformActive;
+  function activeTransformRunners(runners) {
+    const activeRunners = runners.filter(isActiveTransform);
+    let firstRunner = 0;
+    for (let i = 0; i < activeRunners.length; ++i) if (activeRunners[i]._isAbsoluteTransform) firstRunner = i;
+    return activeRunners.slice(firstRunner);
+  }
   function mergeTransforms() {
-    const runners = this._transformationRunners.runners;
-    const netTransform = runners.map(getRunnerTransform).reduce(lmultiply, new Matrix());
+    const netTransform = activeTransformRunners(this._transformationRunners.runners).map(getRunnerTransform).reduce(lmultiply, new Matrix());
     this.transform(netTransform);
     this._transformationRunners.merge();
-    if (this._transformationRunners.length() === 1) {
-      this._frameId = null;
-    }
+    if (this._transformationRunners.length() === 1) this._frameId = null;
   }
   var RunnerArray = class {
     constructor() {
       this.runners = [];
-      this.ids = [];
     }
     add(runner) {
-      if (this.runners.includes(runner)) return;
-      const id = runner.id + 1;
+      var _context;
+      if ((0, import_includes.default)(_context = this.runners).call(_context, runner)) return;
       this.runners.push(runner);
-      this.ids.push(id);
-      return this;
-    }
-    clearBefore(id) {
-      const deleteCnt = this.ids.indexOf(id + 1) || 1;
-      this.ids.splice(0, deleteCnt, 0);
-      this.runners.splice(0, deleteCnt, new FakeRunner()).forEach((r) => r.clearTransformsFromQueue());
       return this;
     }
     edit(id, newRunner) {
-      const index = this.ids.indexOf(id + 1);
-      this.ids.splice(index, 1, id + 1);
-      this.runners.splice(index, 1, newRunner);
+      const index = this.runners.findIndex((runner) => runner.id === id);
+      if (index >= 0) this.runners.splice(index, 1, newRunner);
       return this;
     }
     getByID(id) {
-      return this.runners[this.ids.indexOf(id + 1)];
+      return this.runners.find((runner) => runner.id === id);
     }
     length() {
-      return this.ids.length;
+      return this.runners.length;
     }
     merge() {
       let lastRunner = null;
       for (let i = 0; i < this.runners.length; ++i) {
         const runner = this.runners[i];
-        const condition = lastRunner && runner.done && lastRunner.done && // don't merge runner when persisted on timeline
-        (!runner._timeline || !runner._timeline._runnerIds.includes(runner.id)) && (!lastRunner._timeline || !lastRunner._timeline._runnerIds.includes(lastRunner.id));
-        if (condition) {
+        if (lastRunner && runner.done && lastRunner.done && runner._retired && lastRunner._retired) {
           this.remove(runner.id);
           const newRunner = runner.mergeWith(lastRunner);
           this.edit(lastRunner.id, newRunner);
           lastRunner = newRunner;
           --i;
-        } else {
-          lastRunner = runner;
-        }
+        } else lastRunner = runner;
       }
       return this;
     }
     remove(id) {
-      const index = this.ids.indexOf(id + 1);
-      this.ids.splice(index, 1);
-      this.runners.splice(index, 1);
+      const index = this.runners.findIndex((runner) => runner.id === id);
+      if (index >= 0) this.runners.splice(index, 1);
       return this;
     }
   };
-  registerMethods({
-    Element: {
-      animate(duration, delay, when) {
-        const o = Runner.sanitise(duration, delay, when);
-        const timeline2 = this.timeline();
-        return new Runner(o.duration).loop(o).element(this).timeline(timeline2.play()).schedule(o.delay, o.when);
-      },
-      delay(by, when) {
-        return this.animate(0, by, when);
-      },
-      // this function searches for all runners on the element and deletes the ones
-      // which run before the current one. This is because absolute transformations
-      // overwrite anything anyway so there is no need to waste time computing
-      // other runners
-      _clearTransformRunnersBefore(currentRunner) {
-        this._transformationRunners.clearBefore(currentRunner.id);
-      },
-      _currentTransform(current) {
-        return this._transformationRunners.runners.filter((runner) => runner.id <= current.id).map(getRunnerTransform).reduce(lmultiply, new Matrix());
-      },
-      _addRunner(runner) {
-        this._transformationRunners.add(runner);
-        Animator_default.cancelImmediate(this._frameId);
-        this._frameId = Animator_default.immediate(mergeTransforms.bind(this));
-      },
-      _prepareRunner() {
-        if (this._frameId == null) {
-          this._transformationRunners = new RunnerArray().add(
-            new FakeRunner(new Matrix(this))
-          );
-        }
-      }
+  registerMethods({ Element: {
+    animate(duration, delay, when) {
+      const o = Runner.sanitise(duration, delay, when);
+      const timeline2 = this.timeline();
+      return new Runner(o.duration).loop(o).element(this).timeline(timeline2.play()).schedule(o.delay, o.when);
+    },
+    delay(by, when) {
+      return this.animate(0, by, when);
+    },
+    _currentTransform(current) {
+      const runners = this._transformationRunners.runners;
+      const currentIndex = runners.indexOf(current);
+      return activeTransformRunners(runners.slice(0, currentIndex + 1)).map(getRunnerTransform).reduce(lmultiply, new Matrix());
+    },
+    _addRunner(runner) {
+      if (this._transformationRunners.length() === 1 && this._transformationRunners.runners[0].id === -1) this._transformationRunners.runners[0].transforms = new Matrix(this);
+      this._transformationRunners.add(runner);
+      Animator.cancelImmediate(this._frameId);
+      this._frameId = Animator.immediate(mergeTransforms.bind(this));
+    },
+    _prepareRunner() {
+      if (this._frameId == null) this._transformationRunners = new RunnerArray().add(new FakeRunner(new Matrix(this)));
     }
-  });
-  var difference = (a, b) => a.filter((x5) => !b.includes(x5));
+  } });
+  var difference = (a, b) => a.filter((x2) => !(0, import_includes.default)(b).call(b, x2));
   extend(Runner, {
     attr(a, v) {
       return this.styleAttr("attr", a, v);
     },
-    // Add animatable styles
     css(s, v) {
       return this.styleAttr("css", s, v);
     },
     styleAttr(type, nameOrAttrs, val) {
-      if (typeof nameOrAttrs === "string") {
-        return this.styleAttr(type, { [nameOrAttrs]: val });
+      if (typeof nameOrAttrs === "string") return this.styleAttr(type, { [nameOrAttrs]: val });
+      const attrs2 = nameOrAttrs;
+      const history = this._history[type];
+      if (history && !history.caller.initialised && history.caller.retarget) {
+        history.caller.retarget.call(this, attrs2);
+        return this;
       }
-      let attrs2 = nameOrAttrs;
       if (this._tryRetarget(type, attrs2)) return this;
       let morpher = new Morphable(this._stepper).to(attrs2);
       let keys = Object.keys(attrs2);
-      this.queue(
-        function() {
-          morpher = morpher.from(this.element()[type](keys));
-        },
-        function(pos) {
-          this.element()[type](morpher.at(pos).valueOf());
-          return morpher.done();
-        },
-        function(newToAttrs) {
-          const newKeys = Object.keys(newToAttrs);
-          const differences = difference(newKeys, keys);
-          if (differences.length) {
-            const addedFromAttrs = this.element()[type](differences);
-            const oldFromAttrs = new ObjectBag(morpher.from()).valueOf();
-            Object.assign(oldFromAttrs, addedFromAttrs);
-            morpher.from(oldFromAttrs);
-          }
-          const oldToAttrs = new ObjectBag(morpher.to()).valueOf();
-          Object.assign(oldToAttrs, newToAttrs);
-          morpher.to(oldToAttrs);
-          keys = newKeys;
-          attrs2 = newToAttrs;
+      this.queue(function() {
+        morpher = morpher.from(this.element()[type](keys));
+      }, function(pos) {
+        this.element()[type](morpher.at(pos).valueOf());
+        return morpher.done();
+      }, function(newToAttrs) {
+        const differences = difference(Object.keys(newToAttrs), keys);
+        if (differences.length && morpher.from() != null) {
+          const addedFromAttrs = this.element()[type](differences);
+          const oldFromAttrs = new ObjectBag(morpher.from()).valueOf();
+          Object.assign(oldFromAttrs, addedFromAttrs);
+          morpher.from(oldFromAttrs);
         }
-      );
+        const mergedToAttrs = new ObjectBag(morpher.to()).valueOf();
+        Object.assign(mergedToAttrs, newToAttrs);
+        morpher.to(mergedToAttrs);
+        keys = Object.keys(mergedToAttrs);
+      });
       this._rememberMorpher(type, morpher);
       return this;
     },
     zoom(level, point2) {
       if (this._tryRetarget("zoom", level, point2)) return this;
       let morpher = new Morphable(this._stepper).to(new SVGNumber(level));
-      this.queue(
-        function() {
-          morpher = morpher.from(this.element().zoom());
-        },
-        function(pos) {
-          this.element().zoom(morpher.at(pos), point2);
-          return morpher.done();
-        },
-        function(newLevel, newPoint) {
-          point2 = newPoint;
-          morpher.to(newLevel);
-        }
-      );
+      this.queue(function() {
+        morpher = morpher.from(this.element().zoom());
+      }, function(pos) {
+        this.element().zoom(morpher.at(pos), point2);
+        return morpher.done();
+      }, function(newLevel, newPoint) {
+        point2 = newPoint;
+        morpher.to(newLevel);
+      });
       this._rememberMorpher("zoom", morpher);
       return this;
     },
     /**
-     ** absolute transformations
-     **/
-    //
-    // M v -----|-----(D M v = F v)------|----->  T v
-    //
-    // 1. define the final state (T) and decompose it (once)
-    //    t = [tx, ty, the, lam, sy, sx]
-    // 2. on every frame: pull the current state of all previous transforms
-    //    (M - m can change)
-    //   and then write this as m = [tx0, ty0, the0, lam0, sy0, sx0]
-    // 3. Find the interpolated matrix F(pos) = m + pos * (t - m)
-    //   - Note F(0) = M
-    //   - Note F(1) = T
-    // 4. Now you get the delta matrix as a result: D = F * inv(M)
+    ** absolute transformations
+    **/
     transform(transforms2, relative, affine) {
       relative = transforms2.relative || relative;
-      if (this._isDeclarative && !relative && this._tryRetarget("transform", transforms2)) {
-        return this;
-      }
+      this._hasTransform = true;
+      this._isAbsoluteTransform = this._isAbsoluteTransform || !relative;
+      if (this._isDeclarative && !relative && this._tryRetarget("transform", transforms2)) return this;
       const isMatrix = Matrix.isMatrixLike(transforms2);
       affine = transforms2.affine != null ? transforms2.affine : affine != null ? affine : !isMatrix;
-      const morpher = new Morphable(this._stepper).type(
-        affine ? TransformBag : Matrix
-      );
+      const morpher = new Morphable(this._stepper).type(affine ? TransformBag : Matrix);
+      const matrixMorpher = affine ? new Morphable(this._stepper).type(Matrix) : morpher;
       let origin;
       let element;
       let current;
@@ -4870,210 +5738,186 @@ var RoomPlan = (() => {
         origin = origin || getOrigin(transforms2, element);
         startTransform = new Matrix(relative ? void 0 : element);
         element._addRunner(this);
-        if (!relative) {
-          element._clearTransformRunnersBefore(this);
-        }
       }
       function run(pos) {
         if (!relative) this.clearTransform();
-        const { x: x5, y: y5 } = new Point(origin).transform(
-          element._currentTransform(this)
-        );
-        let target = new Matrix({ ...transforms2, origin: [x5, y5] });
+        const { x: x2, y: y2 } = new Point3(origin).transform(element._currentTransform(this));
+        const targetTransforms = {
+          ...transforms2,
+          origin: [x2, y2]
+        };
+        if (targetTransforms.relative === true) delete targetTransforms.relative;
+        let target = new Matrix(targetTransforms);
         let start = this._isDeclarative && current ? current : startTransform;
+        let activeMorpher = morpher;
         if (affine) {
-          target = target.decompose(x5, y5);
-          start = start.decompose(x5, y5);
-          const rTarget = target.rotate;
-          const rCurrent = start.rotate;
-          const possibilities = [rTarget - 360, rTarget, rTarget + 360];
-          const distances = possibilities.map((a) => Math.abs(a - rCurrent));
-          const shortest = Math.min(...distances);
-          const index = distances.indexOf(shortest);
-          target.rotate = possibilities[index];
-        }
-        if (relative) {
-          if (!isMatrix) {
-            target.rotate = transforms2.rotate || 0;
+          const targetParameters = target.decompose(x2, y2);
+          const startParameters = start.decompose(x2, y2);
+          if (!new TransformBag(targetParameters).toArray().concat(new TransformBag(startParameters).toArray()).every(Number.isFinite)) activeMorpher = matrixMorpher;
+          else {
+            target = targetParameters;
+            start = startParameters;
+            const rTarget = target.rotate;
+            const rCurrent = start.rotate;
+            const possibilities = [
+              rTarget - 360,
+              rTarget,
+              rTarget + 360
+            ];
+            const distances = possibilities.map((a) => Math.abs(a - rCurrent));
+            const shortest = Math.min(...distances);
+            const index = distances.indexOf(shortest);
+            target.rotate = possibilities[index];
           }
-          if (this._isDeclarative && currentAngle) {
-            start.rotate = currentAngle;
-          }
         }
-        morpher.from(start);
-        morpher.to(target);
-        const affineParameters = morpher.at(pos);
+        if (relative && activeMorpher === morpher) {
+          if (!isMatrix) target.rotate = transforms2.rotate || 0;
+          if (this._isDeclarative && currentAngle) start.rotate = currentAngle;
+        }
+        activeMorpher.from(start);
+        activeMorpher.to(target);
+        const affineParameters = activeMorpher.at(pos);
         currentAngle = affineParameters.rotate;
         current = new Matrix(affineParameters);
         this.addTransform(current);
         element._addRunner(this);
-        return morpher.done();
+        return activeMorpher.done();
       }
       function retarget(newTransforms) {
-        if ((newTransforms.origin || "center").toString() !== (transforms2.origin || "center").toString()) {
-          origin = getOrigin(newTransforms, element);
-        }
-        transforms2 = { ...newTransforms, origin };
+        origin = getOrigin(newTransforms, element);
+        transforms2 = { ...newTransforms };
       }
       this.queue(setup, run, retarget, true);
       this._isDeclarative && this._rememberMorpher("transform", morpher);
       return this;
     },
-    // Animatable x-axis
-    x(x5) {
-      return this._queueNumber("x", x5);
+    x(x2) {
+      return this._queueNumber("x", x2);
     },
-    // Animatable y-axis
-    y(y5) {
-      return this._queueNumber("y", y5);
+    y(y2) {
+      return this._queueNumber("y", y2);
     },
-    ax(x5) {
-      return this._queueNumber("ax", x5);
+    ax(x2) {
+      return this._queueNumber("ax", x2);
     },
-    ay(y5) {
-      return this._queueNumber("ay", y5);
+    ay(y2) {
+      return this._queueNumber("ay", y2);
     },
-    dx(x5 = 0) {
-      return this._queueNumberDelta("x", x5);
+    dx(x2 = 0) {
+      return this._queueNumberDelta("x", x2);
     },
-    dy(y5 = 0) {
-      return this._queueNumberDelta("y", y5);
+    dy(y2 = 0) {
+      return this._queueNumberDelta("y", y2);
     },
-    dmove(x5, y5) {
-      return this.dx(x5).dy(y5);
+    dmove(x2, y2) {
+      return this.dx(x2).dy(y2);
     },
     _queueNumberDelta(method, to2) {
       to2 = new SVGNumber(to2);
       if (this._tryRetarget(method, to2)) return this;
       const morpher = new Morphable(this._stepper).to(to2);
       let from2 = null;
-      this.queue(
-        function() {
-          from2 = this.element()[method]();
-          morpher.from(from2);
-          morpher.to(from2 + to2);
-        },
-        function(pos) {
-          this.element()[method](morpher.at(pos));
-          return morpher.done();
-        },
-        function(newTo) {
-          morpher.to(from2 + new SVGNumber(newTo));
-        }
-      );
+      this.queue(function() {
+        from2 = this.element()[method]();
+        morpher.from(from2);
+        morpher.to(from2 + to2);
+      }, function(pos) {
+        this.element()[method](morpher.at(pos));
+        return morpher.done();
+      }, function(newTo) {
+        morpher.to(from2 + new SVGNumber(newTo));
+      });
       this._rememberMorpher(method, morpher);
       return this;
     },
     _queueObject(method, to2) {
       if (this._tryRetarget(method, to2)) return this;
       const morpher = new Morphable(this._stepper).to(to2);
-      this.queue(
-        function() {
-          morpher.from(this.element()[method]());
-        },
-        function(pos) {
-          this.element()[method](morpher.at(pos));
-          return morpher.done();
-        }
-      );
+      this.queue(function() {
+        morpher.from(this.element()[method]());
+      }, function(pos) {
+        this.element()[method](morpher.at(pos));
+        return morpher.done();
+      });
       this._rememberMorpher(method, morpher);
       return this;
     },
     _queueNumber(method, value) {
       return this._queueObject(method, new SVGNumber(value));
     },
-    // Animatable center x-axis
-    cx(x5) {
-      return this._queueNumber("cx", x5);
+    cx(x2) {
+      return this._queueNumber("cx", x2);
     },
-    // Animatable center y-axis
-    cy(y5) {
-      return this._queueNumber("cy", y5);
+    cy(y2) {
+      return this._queueNumber("cy", y2);
     },
-    // Add animatable move
-    move(x5, y5) {
-      return this.x(x5).y(y5);
+    move(x2, y2) {
+      return this.x(x2).y(y2);
     },
-    amove(x5, y5) {
-      return this.ax(x5).ay(y5);
+    amove(x2, y2) {
+      return this.ax(x2).ay(y2);
     },
-    // Add animatable center
-    center(x5, y5) {
-      return this.cx(x5).cy(y5);
+    center(x2, y2) {
+      return this.cx(x2).cy(y2);
     },
-    // Add animatable size
-    size(width4, height4) {
-      let box;
-      if (!width4 || !height4) {
-        box = this._element.bbox();
-      }
-      if (!width4) {
-        width4 = box.width / box.height * height4;
-      }
-      if (!height4) {
-        height4 = box.height / box.width * width4;
-      }
-      return this.width(width4).height(height4);
+    size(width2, height2) {
+      const size2 = proportionalSize(this._element, width2, height2);
+      return this.width(size2.width).height(size2.height);
     },
-    // Add animatable width
-    width(width4) {
-      return this._queueNumber("width", width4);
+    width(width2) {
+      return this._queueNumber("width", width2);
     },
-    // Add animatable height
-    height(height4) {
-      return this._queueNumber("height", height4);
+    height(height2) {
+      return this._queueNumber("height", height2);
     },
-    // Add animatable plot
     plot(a, b, c, d) {
-      if (arguments.length === 4) {
-        return this.plot([a, b, c, d]);
-      }
+      if (arguments.length === 4) return this.plot([
+        a,
+        b,
+        c,
+        d
+      ]);
       if (this._tryRetarget("plot", a)) return this;
       const morpher = new Morphable(this._stepper).type(this._element.MorphArray).to(a);
-      this.queue(
-        function() {
-          morpher.from(this._element.array());
-        },
-        function(pos) {
-          this._element.plot(morpher.at(pos));
-          return morpher.done();
-        }
-      );
+      this.queue(function() {
+        morpher.from(this._element.array());
+      }, function(pos) {
+        this._element.plot(morpher.at(pos));
+        return morpher.done();
+      });
       this._rememberMorpher("plot", morpher);
       return this;
     },
-    // Add leading method
     leading(value) {
       return this._queueNumber("leading", value);
     },
-    // Add animatable viewbox
-    viewbox(x5, y5, width4, height4) {
-      return this._queueObject("viewbox", new Box(x5, y5, width4, height4));
+    viewbox(x2, y2, width2, height2) {
+      return this._queueObject("viewbox", new Box(x2, y2, width2, height2));
     },
     update(o) {
-      if (typeof o !== "object") {
-        return this.update({
-          offset: arguments[0],
-          color: arguments[1],
-          opacity: arguments[2]
-        });
-      }
+      if (typeof o !== "object") return this.update({
+        offset: arguments[0],
+        color: arguments[1],
+        opacity: arguments[2]
+      });
       if (o.opacity != null) this.attr("stop-opacity", o.opacity);
       if (o.color != null) this.attr("stop-color", o.color);
       if (o.offset != null) this.attr("offset", o.offset);
       return this;
     }
   });
-  extend(Runner, { rx, ry, from, to });
+  extend(Runner, {
+    rx,
+    ry,
+    from,
+    to
+  });
   register(Runner, "Runner");
-
-  // node_modules/@svgdotjs/svg.js/src/elements/Svg.js
   var Svg = class extends Container {
     constructor(node, attrs2 = node) {
       super(nodeOrNew("svg", node), attrs2);
       this.namespace();
     }
-    // Creates and returns defs element
     defs() {
       if (!this.isRoot()) return this.root().defs();
       return adopt(this.node.querySelector("defs")) || this.put(new Defs());
@@ -5081,145 +5925,110 @@ var RoomPlan = (() => {
     isRoot() {
       return !this.node.parentNode || !(this.node.parentNode instanceof globals.window.SVGElement) && this.node.parentNode.nodeName !== "#document-fragment";
     }
-    // Add namespaces
     namespace() {
       if (!this.isRoot()) return this.root().namespace();
-      return this.attr({ xmlns: svg, version: "1.1" }).attr(
-        "xmlns:xlink",
-        xlink,
-        xmlns
-      );
+      return this.attr({
+        xmlns: svg,
+        version: "1.1"
+      }).attr("xmlns:xlink", xlink, xmlns);
     }
     removeNamespace() {
-      return this.attr({ xmlns: null, version: null }).attr("xmlns:xlink", null, xmlns).attr("xmlns:svgjs", null, xmlns);
+      return this.attr({
+        xmlns: null,
+        version: null
+      }).attr("xmlns:xlink", null, xmlns).attr("xmlns:svgjs", null, xmlns);
     }
-    // Check if this is a root svg
-    // If not, call root() from this element
     root() {
       if (this.isRoot()) return this;
       return super.root();
     }
   };
-  registerMethods({
-    Container: {
-      // Create nested svg document
-      nested: wrapWithAttrCheck(function() {
-        return this.put(new Svg());
-      })
-    }
-  });
+  registerMethods({ Container: { nested: wrapWithAttrCheck(function() {
+    return this.put(new Svg());
+  }) } });
   register(Svg, "Svg", true);
-
-  // node_modules/@svgdotjs/svg.js/src/elements/Symbol.js
-  var Symbol2 = class extends Container {
-    // Initialize node
+  var Symbol$1 = class extends Container {
     constructor(node, attrs2 = node) {
       super(nodeOrNew("symbol", node), attrs2);
     }
   };
-  registerMethods({
-    Container: {
-      symbol: wrapWithAttrCheck(function() {
-        return this.put(new Symbol2());
-      })
-    }
-  });
-  register(Symbol2, "Symbol");
-
-  // node_modules/@svgdotjs/svg.js/src/modules/core/textable.js
-  var textable_exports = {};
-  __export(textable_exports, {
+  registerMethods({ Container: { symbol: wrapWithAttrCheck(function() {
+    return this.put(new Symbol$1());
+  }) } });
+  register(Symbol$1, "Symbol");
+  var textable_exports = /* @__PURE__ */ __exportAll({
     amove: () => amove,
     ax: () => ax,
     ay: () => ay,
     build: () => build,
     center: () => center,
-    cx: () => cx2,
-    cy: () => cy2,
+    cx: () => cx,
+    cy: () => cy,
     length: () => length,
-    move: () => move2,
+    move: () => move$1,
     plain: () => plain,
-    x: () => x3,
-    y: () => y3
+    x: () => x$1,
+    y: () => y$1
   });
   function plain(text) {
-    if (this._build === false) {
-      this.clear();
-    }
+    if (this._build === false) this.clear();
     this.node.appendChild(globals.document.createTextNode(text));
     return this;
   }
   function length() {
     return this.node.getComputedTextLength();
   }
-  function x3(x5, box = this.bbox()) {
-    if (x5 == null) {
-      return box.x;
-    }
-    return this.attr("x", this.attr("x") + x5 - box.x);
+  function x$1(x2, box = this.bbox()) {
+    if (x2 == null) return box.x;
+    return this.attr("x", this.attr("x") + x2 - box.x);
   }
-  function y3(y5, box = this.bbox()) {
-    if (y5 == null) {
-      return box.y;
-    }
-    return this.attr("y", this.attr("y") + y5 - box.y);
+  function y$1(y2, box = this.bbox()) {
+    if (y2 == null) return box.y;
+    return this.attr("y", this.attr("y") + y2 - box.y);
   }
-  function move2(x5, y5, box = this.bbox()) {
-    return this.x(x5, box).y(y5, box);
+  function move$1(x2, y2, box = this.bbox()) {
+    return this.x(x2, box).y(y2, box);
   }
-  function cx2(x5, box = this.bbox()) {
-    if (x5 == null) {
-      return box.cx;
-    }
-    return this.attr("x", this.attr("x") + x5 - box.cx);
+  function cx(x2, box = this.bbox()) {
+    if (x2 == null) return box.cx;
+    return this.attr("x", this.attr("x") + x2 - box.cx);
   }
-  function cy2(y5, box = this.bbox()) {
-    if (y5 == null) {
-      return box.cy;
-    }
-    return this.attr("y", this.attr("y") + y5 - box.cy);
+  function cy(y2, box = this.bbox()) {
+    if (y2 == null) return box.cy;
+    return this.attr("y", this.attr("y") + y2 - box.cy);
   }
-  function center(x5, y5, box = this.bbox()) {
-    return this.cx(x5, box).cy(y5, box);
+  function center(x2, y2, box = this.bbox()) {
+    return this.cx(x2, box).cy(y2, box);
   }
-  function ax(x5) {
-    return this.attr("x", x5);
+  function ax(x2) {
+    return this.attr("x", x2);
   }
-  function ay(y5) {
-    return this.attr("y", y5);
+  function ay(y2) {
+    return this.attr("y", y2);
   }
-  function amove(x5, y5) {
-    return this.ax(x5).ay(y5);
+  function amove(x2, y2) {
+    return this.ax(x2).ay(y2);
   }
   function build(build2) {
     this._build = !!build2;
     return this;
   }
-
-  // node_modules/@svgdotjs/svg.js/src/elements/Text.js
   var Text = class extends Shape {
-    // Initialize node
     constructor(node, attrs2 = node) {
       super(nodeOrNew("text", node), attrs2);
       this.dom.leading = this.dom.leading ?? new SVGNumber(1.3);
       this._rebuild = true;
       this._build = false;
     }
-    // Set / get leading
     leading(value) {
-      if (value == null) {
-        return this.dom.leading;
-      }
+      if (value == null) return this.dom.leading;
       this.dom.leading = new SVGNumber(value);
       return this.rebuild();
     }
-    // Rebuild appearance type
     rebuild(rebuild) {
-      if (typeof rebuild === "boolean") {
-        this._rebuild = rebuild;
-      }
+      if (typeof rebuild === "boolean") this._rebuild = rebuild;
       if (this._rebuild) {
-        const self = this;
+        const self2 = this;
         let blankLineOffset = 0;
         const leading = this.dom.leading;
         this.each(function(i) {
@@ -5227,10 +6036,9 @@ var RoomPlan = (() => {
           const fontSize = globals.window.getComputedStyle(this.node).getPropertyValue("font-size");
           const dy2 = leading * new SVGNumber(fontSize);
           if (this.dom.newLined) {
-            this.attr("x", self.attr("x"));
-            if (this.text() === "\n") {
-              blankLineOffset += dy2;
-            } else {
+            this.attr("x", self2.attr("x"));
+            if (this.text() === "\n") blankLineOffset += dy2;
+            else {
               this.attr("dy", i ? dy2 + blankLineOffset : 0);
               blankLineOffset = 0;
             }
@@ -5240,17 +6048,14 @@ var RoomPlan = (() => {
       }
       return this;
     }
-    // overwrite method from parent to set data properly
     setData(o) {
       this.dom = o;
       this.dom.leading = new SVGNumber(o.leading || 1.3);
       return this;
     }
     writeDataToDom() {
-      writeDataToDom(this, this.dom, { leading: 1.3 });
-      return this;
+      return super.writeDataToDom({ leading: 1.3 });
     }
-    // Set the text content
     text(text) {
       if (text === void 0) {
         const children = this.node.childNodes;
@@ -5261,101 +6066,72 @@ var RoomPlan = (() => {
             if (i === 0) firstLine = i + 1;
             continue;
           }
-          if (i !== firstLine && children[i].nodeType !== 3 && adopt(children[i]).dom.newLined === true) {
-            text += "\n";
-          }
+          if (i !== firstLine && children[i].nodeType !== 3 && adopt(children[i]).dom.newLined === true) text += "\n";
           text += children[i].textContent;
         }
         return text;
       }
       this.clear().build(true);
-      if (typeof text === "function") {
-        text.call(this, this);
-      } else {
+      if (typeof text === "function") text.call(this, this);
+      else {
         text = (text + "").split("\n");
-        for (let j = 0, jl = text.length; j < jl; j++) {
-          this.newLine(text[j]);
-        }
+        for (let j = 0, jl = text.length; j < jl; j++) this.newLine(text[j]);
       }
       return this.build(false).rebuild();
     }
   };
   extend(Text, textable_exports);
-  registerMethods({
-    Container: {
-      // Create text element
-      text: wrapWithAttrCheck(function(text = "") {
-        return this.put(new Text()).text(text);
-      }),
-      // Create plain text element
-      plain: wrapWithAttrCheck(function(text = "") {
-        return this.put(new Text()).plain(text);
-      })
-    }
-  });
+  registerMethods({ Container: {
+    text: wrapWithAttrCheck(function(text = "") {
+      return this.put(new Text()).text(text);
+    }),
+    plain: wrapWithAttrCheck(function(text = "") {
+      return this.put(new Text()).plain(text);
+    })
+  } });
   register(Text, "Text");
-
-  // node_modules/@svgdotjs/svg.js/src/elements/Tspan.js
   var Tspan = class extends Shape {
-    // Initialize node
     constructor(node, attrs2 = node) {
       super(nodeOrNew("tspan", node), attrs2);
       this._build = false;
     }
-    // Shortcut dx
     dx(dx2) {
       return this.attr("dx", dx2);
     }
-    // Shortcut dy
     dy(dy2) {
       return this.attr("dy", dy2);
     }
-    // Create new line
     newLine() {
       this.dom.newLined = true;
       const text = this.parent();
-      if (!(text instanceof Text)) {
-        return this;
-      }
+      if (!(text instanceof Text)) return this;
       const i = text.index(this);
       const fontSize = globals.window.getComputedStyle(this.node).getPropertyValue("font-size");
       const dy2 = text.dom.leading * new SVGNumber(fontSize);
       return this.dy(i ? dy2 : 0).attr("x", text.x());
     }
-    // Set text content
     text(text) {
-      if (text == null)
-        return this.node.textContent + (this.dom.newLined ? "\n" : "");
+      if (text == null) return this.node.textContent + (this.dom.newLined ? "\n" : "");
       if (typeof text === "function") {
         this.clear().build(true);
         text.call(this, this);
         this.build(false);
-      } else {
-        this.plain(text);
-      }
+      } else this.plain(text);
       return this;
     }
   };
   extend(Tspan, textable_exports);
   registerMethods({
-    Tspan: {
-      tspan: wrapWithAttrCheck(function(text = "") {
-        const tspan = new Tspan();
-        if (!this._build) {
-          this.clear();
-        }
-        return this.put(tspan).text(text);
-      })
-    },
-    Text: {
-      newLine: function(text = "") {
-        return this.tspan(text).newLine();
-      }
-    }
+    Tspan: { tspan: wrapWithAttrCheck(function(text = "") {
+      const tspan = new Tspan();
+      if (!this._build) this.clear();
+      return this.put(tspan).text(text);
+    }) },
+    Text: { newLine: function(text = "") {
+      return this.tspan(text).newLine();
+    } }
   });
   register(Tspan, "Tspan");
-
-  // node_modules/@svgdotjs/svg.js/src/elements/Circle.js
   var Circle = class extends Shape {
     constructor(node, attrs2 = node) {
       super(nodeOrNew("circle", node), attrs2);
@@ -5363,35 +6139,32 @@ var RoomPlan = (() => {
     radius(r) {
       return this.attr("r", r);
     }
-    // Radius x value
     rx(rx2) {
       return this.attr("r", rx2);
     }
-    // Alias radius x value
     ry(ry2) {
       return this.rx(ry2);
     }
-    size(size3) {
-      return this.radius(new SVGNumber(size3).divide(2));
+    size(size2) {
+      return this.radius(new SVGNumber(size2).divide(2));
     }
   };
-  extend(Circle, { x, y, cx, cy, width, height });
-  registerMethods({
-    Container: {
-      // Create circle element
-      circle: wrapWithAttrCheck(function(size3 = 0) {
-        return this.put(new Circle()).size(size3).move(0, 0);
-      })
-    }
+  extend(Circle, {
+    x: x$3,
+    y: y$3,
+    cx: cx$1,
+    cy: cy$1,
+    width: width$2,
+    height: height$2
   });
+  registerMethods({ Container: { circle: wrapWithAttrCheck(function(size2 = 0) {
+    return this.put(new Circle()).size(size2).move(0, 0);
+  }) } });
   register(Circle, "Circle");
-
-  // node_modules/@svgdotjs/svg.js/src/elements/ClipPath.js
   var ClipPath = class extends Container {
     constructor(node, attrs2 = node) {
       super(nodeOrNew("clipPath", node), attrs2);
     }
-    // Unclip all clipped elements and remove itself
     remove() {
       this.targets().forEach(function(el) {
         el.unclip();
@@ -5399,18 +6172,14 @@ var RoomPlan = (() => {
       return super.remove();
     }
     targets() {
-      return baseFind("svg [clip-path*=" + this.id() + "]");
+      return findReferences(this.node, "clip-path");
     }
   };
   registerMethods({
-    Container: {
-      // Create clipping element
-      clip: wrapWithAttrCheck(function() {
-        return this.defs().put(new ClipPath());
-      })
-    },
+    Container: { clip: wrapWithAttrCheck(function() {
+      return this.defs().put(new ClipPath());
+    }) },
     Element: {
-      // Distribute clipPath to svg element
       clipper() {
         return this.reference("clip-path");
       },
@@ -5418,54 +6187,49 @@ var RoomPlan = (() => {
         const clipper = element instanceof ClipPath ? element : this.parent().clip().add(element);
         return this.attr("clip-path", "url(#" + clipper.id() + ")");
       },
-      // Unclip element
       unclip() {
         return this.attr("clip-path", null);
       }
     }
   });
   register(ClipPath, "ClipPath");
-
-  // node_modules/@svgdotjs/svg.js/src/elements/ForeignObject.js
   var ForeignObject = class extends Element {
     constructor(node, attrs2 = node) {
       super(nodeOrNew("foreignObject", node), attrs2);
     }
   };
-  registerMethods({
-    Container: {
-      foreignObject: wrapWithAttrCheck(function(width4, height4) {
-        return this.put(new ForeignObject()).size(width4, height4);
-      })
-    }
-  });
+  registerMethods({ Container: { foreignObject: wrapWithAttrCheck(function(width2, height2) {
+    return this.put(new ForeignObject()).size(width2, height2);
+  }) } });
   register(ForeignObject, "ForeignObject");
-
-  // node_modules/@svgdotjs/svg.js/src/modules/core/containerGeometry.js
-  var containerGeometry_exports = {};
-  __export(containerGeometry_exports, {
+  var containerGeometry_exports = /* @__PURE__ */ __exportAll({
     dmove: () => dmove,
     dx: () => dx,
     dy: () => dy,
-    height: () => height3,
-    move: () => move3,
-    size: () => size2,
-    width: () => width3,
-    x: () => x4,
-    y: () => y4
+    height: () => height,
+    move: () => move,
+    size: () => size,
+    width: () => width,
+    x: () => x,
+    y: () => y
   });
   function dmove(dx2, dy2) {
     this.children().forEach((child) => {
       let bbox2;
       try {
-        bbox2 = child.node instanceof getWindow().SVGSVGElement ? new Box(child.attr(["x", "y", "width", "height"])) : child.bbox();
+        bbox2 = child.node instanceof getWindow().SVGSVGElement ? new Box(child.attr([
+          "x",
+          "y",
+          "width",
+          "height"
+        ])) : child.bbox();
       } catch (e) {
         return;
       }
       const m = new Matrix(child);
       const matrix = m.translate(dx2, dy2).transform(m.inverse());
-      const p = new Point(bbox2.x, bbox2.y).transform(matrix);
-      child.move(p.x, p.y);
+      const p = new Point3(bbox2.x, bbox2.y).transform(matrix);
+      child.dmove(p.x - bbox2.x, p.y - bbox2.y);
     });
     return this;
   }
@@ -5475,85 +6239,69 @@ var RoomPlan = (() => {
   function dy(dy2) {
     return this.dmove(0, dy2);
   }
-  function height3(height4, box = this.bbox()) {
-    if (height4 == null) return box.height;
-    return this.size(box.width, height4, box);
+  function height(height2, box = this.bbox()) {
+    if (height2 == null) return box.height;
+    return this.size(box.width, height2, box);
   }
-  function move3(x5 = 0, y5 = 0, box = this.bbox()) {
-    const dx2 = x5 - box.x;
-    const dy2 = y5 - box.y;
+  function move(x2 = 0, y2 = 0, box = this.bbox()) {
+    const dx2 = x2 - box.x;
+    const dy2 = y2 - box.y;
     return this.dmove(dx2, dy2);
   }
-  function size2(width4, height4, box = this.bbox()) {
-    const p = proportionalSize(this, width4, height4, box);
+  function size(width2, height2, box = this.bbox()) {
+    const p = proportionalSize(this, width2, height2, box);
     const scaleX = p.width / box.width;
     const scaleY = p.height / box.height;
     this.children().forEach((child) => {
-      const o = new Point(box).transform(new Matrix(child).inverse());
+      const o = new Point3(box).transform(new Matrix(child).inverse());
       child.scale(scaleX, scaleY, o.x, o.y);
     });
     return this;
   }
-  function width3(width4, box = this.bbox()) {
-    if (width4 == null) return box.width;
-    return this.size(width4, box.height, box);
+  function width(width2, box = this.bbox()) {
+    if (width2 == null) return box.width;
+    return this.size(width2, box.height, box);
   }
-  function x4(x5, box = this.bbox()) {
-    if (x5 == null) return box.x;
-    return this.move(x5, box.y, box);
+  function x(x2, box = this.bbox()) {
+    if (x2 == null) return box.x;
+    return this.move(x2, box.y, box);
   }
-  function y4(y5, box = this.bbox()) {
-    if (y5 == null) return box.y;
-    return this.move(box.x, y5, box);
+  function y(y2, box = this.bbox()) {
+    if (y2 == null) return box.y;
+    return this.move(box.x, y2, box);
   }
-
-  // node_modules/@svgdotjs/svg.js/src/elements/G.js
   var G = class extends Container {
     constructor(node, attrs2 = node) {
       super(nodeOrNew("g", node), attrs2);
     }
   };
   extend(G, containerGeometry_exports);
-  registerMethods({
-    Container: {
-      // Create a group element
-      group: wrapWithAttrCheck(function() {
-        return this.put(new G());
-      })
-    }
-  });
+  registerMethods({ Container: { group: wrapWithAttrCheck(function() {
+    return this.put(new G());
+  }) } });
   register(G, "G");
-
-  // node_modules/@svgdotjs/svg.js/src/elements/A.js
   var A = class extends Container {
     constructor(node, attrs2 = node) {
       super(nodeOrNew("a", node), attrs2);
     }
-    // Link target attribute
     target(target) {
       return this.attr("target", target);
     }
-    // Link url
     to(url) {
       return this.attr("href", url, xlink);
     }
   };
   extend(A, containerGeometry_exports);
   registerMethods({
-    Container: {
-      // Create a hyperlink element
-      link: wrapWithAttrCheck(function(url) {
-        return this.put(new A()).to(url);
-      })
-    },
+    Container: { link: wrapWithAttrCheck(function(url) {
+      return this.put(new A()).to(url);
+    }) },
     Element: {
       unlink() {
         const link = this.linker();
         if (!link) return this;
         const parent = link.parent();
-        if (!parent) {
-          return this.remove();
-        }
+        if (!parent) return this.remove();
         const index = parent.index(link);
         parent.add(this, index);
         link.remove();
@@ -5565,31 +6313,22 @@ var RoomPlan = (() => {
           link = new A();
           this.wrap(link);
         }
-        if (typeof url === "function") {
-          url.call(link, link);
-        } else {
-          link.to(url);
-        }
+        if (typeof url === "function") url.call(link, link);
+        else link.to(url);
         return this;
       },
       linker() {
         const link = this.parent();
-        if (link && link.node.nodeName.toLowerCase() === "a") {
-          return link;
-        }
+        if (link && link.node.nodeName.toLowerCase() === "a") return link;
         return null;
       }
     }
   });
   register(A, "A");
-
-  // node_modules/@svgdotjs/svg.js/src/elements/Mask.js
   var Mask = class extends Container {
-    // Initialize node
     constructor(node, attrs2 = node) {
       super(nodeOrNew("mask", node), attrs2);
     }
-    // Unmask all masked elements and remove itself
     remove() {
       this.targets().forEach(function(el) {
         el.unmask();
@@ -5597,17 +6336,14 @@ var RoomPlan = (() => {
       return super.remove();
     }
     targets() {
-      return baseFind("svg [mask*=" + this.id() + "]");
+      return findReferences(this.node, "mask");
     }
   };
   registerMethods({
-    Container: {
-      mask: wrapWithAttrCheck(function() {
-        return this.defs().put(new Mask());
-      })
-    },
+    Container: { mask: wrapWithAttrCheck(function() {
+      return this.defs().put(new Mask());
+    }) },
     Element: {
-      // Distribute mask to svg element
       masker() {
         return this.reference("mask");
       },
@@ -5615,52 +6351,37 @@ var RoomPlan = (() => {
         const masker = element instanceof Mask ? element : this.parent().mask().add(element);
         return this.attr("mask", "url(#" + masker.id() + ")");
       },
-      // Unmask element
       unmask() {
         return this.attr("mask", null);
       }
     }
   });
   register(Mask, "Mask");
-
-  // node_modules/@svgdotjs/svg.js/src/elements/Stop.js
   var Stop = class extends Element {
     constructor(node, attrs2 = node) {
       super(nodeOrNew("stop", node), attrs2);
     }
-    // add color stops
     update(o) {
-      if (typeof o === "number" || o instanceof SVGNumber) {
-        o = {
-          offset: arguments[0],
-          color: arguments[1],
-          opacity: arguments[2]
-        };
-      }
+      if (typeof o === "number" || o instanceof SVGNumber) o = {
+        offset: arguments[0],
+        color: arguments[1],
+        opacity: arguments[2]
+      };
       if (o.opacity != null) this.attr("stop-opacity", o.opacity);
       if (o.color != null) this.attr("stop-color", o.color);
       if (o.offset != null) this.attr("offset", new SVGNumber(o.offset));
       return this;
     }
   };
-  registerMethods({
-    Gradient: {
-      // Add a color stop
-      stop: function(offset, color, opacity) {
-        return this.put(new Stop()).update(offset, color, opacity);
-      }
-    }
-  });
+  registerMethods({ Gradient: { stop: function(offset, color, opacity) {
+    return this.put(new Stop()).update(offset, color, opacity);
+  } } });
   register(Stop, "Stop");
-
-  // node_modules/@svgdotjs/svg.js/src/elements/Style.js
   function cssRule(selector, rule) {
     if (!selector) return "";
     if (!rule) return selector;
     let ret = selector + "{";
-    for (const i in rule) {
-      ret += unCamelCase(i) + ":" + rule[i] + ";";
-    }
+    for (const i in rule) ret += unCamelCase(i) + ":" + rule[i] + ";";
     ret += "}";
     return ret;
   }
@@ -5692,117 +6413,98 @@ var RoomPlan = (() => {
     }
   });
   register(Style, "Style");
-
-  // node_modules/@svgdotjs/svg.js/src/elements/TextPath.js
   var TextPath = class extends Text {
-    // Initialize node
     constructor(node, attrs2 = node) {
       super(nodeOrNew("textPath", node), attrs2);
     }
-    // return the array of the path track element
     array() {
       const track = this.track();
       return track ? track.array() : null;
     }
-    // Plot path if any
     plot(d) {
       const track = this.track();
       let pathArray = null;
-      if (track) {
-        pathArray = track.plot(d);
-      }
+      if (track) pathArray = track.plot(d);
       return d == null ? pathArray : this;
     }
-    // Get the path element
     track() {
       return this.reference("href");
     }
   };
   registerMethods({
-    Container: {
-      textPath: wrapWithAttrCheck(function(text, path) {
-        if (!(text instanceof Text)) {
-          text = this.text(text);
-        }
-        return text.path(path);
-      })
-    },
+    Container: { textPath: wrapWithAttrCheck(function(text, path) {
+      if (!(text instanceof Text)) text = this.text(text);
+      return text.path(path);
+    }) },
     Text: {
-      // Create path for text to run on
       path: wrapWithAttrCheck(function(track, importNodes = true) {
         const textPath = new TextPath();
-        if (!(track instanceof Path)) {
-          track = this.defs().path(track);
-        }
+        if (!(track instanceof Path)) track = this.defs().path(track);
         textPath.attr("href", "#" + track, xlink);
         let node;
-        if (importNodes) {
-          while (node = this.node.firstChild) {
-            textPath.node.appendChild(node);
-          }
-        }
+        if (importNodes) while (node = this.node.firstChild) textPath.node.appendChild(node);
         return this.put(textPath);
       }),
-      // Get the textPath children
       textPath() {
         return this.findOne("textPath");
       }
     },
     Path: {
-      // creates a textPath from this path
       text: wrapWithAttrCheck(function(text) {
-        if (!(text instanceof Text)) {
-          text = new Text().addTo(this.parent()).text(text);
-        }
+        if (!(text instanceof Text)) text = new Text().addTo(this.parent()).text(text);
         return text.path(this);
       }),
       targets() {
-        return baseFind("svg textPath").filter((node) => {
-          return (node.attr("href") || "").includes(this.id());
-        });
+        return findReferences(this.node, "href", "textPath");
       }
     }
   });
   TextPath.prototype.MorphArray = PathArray;
   register(TextPath, "TextPath");
-
-  // node_modules/@svgdotjs/svg.js/src/elements/Use.js
   var Use = class extends Shape {
     constructor(node, attrs2 = node) {
       super(nodeOrNew("use", node), attrs2);
     }
-    // Use element as a reference
     use(element, file) {
       return this.attr("href", (file || "") + "#" + element, xlink);
     }
   };
-  registerMethods({
-    Container: {
-      // Create a use element
-      use: wrapWithAttrCheck(function(element, file) {
-        return this.put(new Use()).use(element, file);
-      })
-    }
-  });
+  registerMethods({ Container: { use: wrapWithAttrCheck(function(element, file) {
+    return this.put(new Use()).use(element, file);
+  }) } });
   register(Use, "Use");
-
-  // node_modules/@svgdotjs/svg.js/src/main.js
   var SVG = makeInstance;
-  extend([Svg, Symbol2, Image, Pattern, Marker], getMethodsFor("viewbox"));
-  extend([Line, Polyline, Polygon, Path], getMethodsFor("marker"));
+  extend([
+    Svg,
+    Symbol$1,
+    Image,
+    Pattern,
+    Marker
+  ], getMethodsFor("viewbox"));
+  extend([
+    Line,
+    Polyline,
+    Polygon,
+    Path
+  ], getMethodsFor("marker"));
   extend(Text, getMethodsFor("Text"));
   extend(Path, getMethodsFor("Path"));
   extend(Defs, getMethodsFor("Defs"));
   extend([Text, Tspan], getMethodsFor("Tspan"));
-  extend([Rect, Ellipse, Gradient, Runner], getMethodsFor("radius"));
+  extend([
+    Rect,
+    Ellipse,
+    Gradient,
+    Runner
+  ], getMethodsFor("radius"));
   extend(EventTarget, getMethodsFor("EventTarget"));
   extend(Dom, getMethodsFor("Dom"));
   extend(Element, getMethodsFor("Element"));
   extend(Shape, getMethodsFor("Shape"));
-  extend([Container, Fragment_default], getMethodsFor("Container"));
+  extend([Container, Fragment], getMethodsFor("Container"));
   extend(Gradient, getMethodsFor("Gradient"));
   extend(Runner, getMethodsFor("Runner"));
-  List_default.extend(getMethodNames());
+  List.extend(getMethodNames());
   registerMorphableType([
     SVGNumber,
     Color,
@@ -5811,14 +6513,257 @@ var RoomPlan = (() => {
     SVGArray,
     PointArray,
     PathArray,
-    Point
+    Point3
   ]);
   makeMorphable();
 
-  // src/types.ts
-  var DESK_FILL_COLORS = {
-    WORKSTATION: "#d0e4f5",
-    DUMMY: "#e8e0d0"
+  // src/i18n.ts
+  var DE_MESSAGES = {
+    contextMenu: {
+      delete: "L\xF6schen",
+      rename: "Bezeichnen",
+      renamePrompt: "Bezeichnung:",
+      removeCorner: "Ecke l\xF6schen",
+      splitWall: "Wand trennen",
+      moveAlongWall: "Entlang der Wand verschieben",
+      hingeLeft: "Anschlag links",
+      hingeRight: "Anschlag rechts",
+      openInward: "Innen \xF6ffnend",
+      openOutward: "Au\xDFen \xF6ffnend"
+    },
+    validation: {
+      wallSelfIntersectNewPoint: "Neuer Wandpunkt w\xFCrde zu einer Selbst\xFCberschneidung f\xFChren \u2013 \xC4nderung verworfen.",
+      wallMinPoints: "Der Wandverlauf ben\xF6tigt mindestens 3 Eckpunkte \u2013 Ecke kann nicht entfernt werden.",
+      wallSelfIntersectRemove: (idx) => `Eckpunkt ${idx} kann nicht entfernt werden \u2013 Ergebnis w\xFCrde sich selbst schneiden.`,
+      wallSelfIntersectMove: (idx) => `Wandpunkt ${idx} w\xFCrde zu einer Selbst\xFCberschneidung f\xFChren \u2013 \xC4nderung verworfen.`,
+      furnitureOutsideRoom: (count) => `${count} Element(e) liegen nach der Wand\xE4nderung au\xDFerhalb des Raums.`
+    }
+  };
+  var EN_MESSAGES = {
+    contextMenu: {
+      delete: "Delete",
+      rename: "Rename",
+      renamePrompt: "Name:",
+      removeCorner: "Remove corner",
+      splitWall: "Split wall",
+      moveAlongWall: "Move along wall",
+      hingeLeft: "Hinge left",
+      hingeRight: "Hinge right",
+      openInward: "Opens inward",
+      openOutward: "Opens outward"
+    },
+    validation: {
+      wallSelfIntersectNewPoint: "New wall point would cause a self-intersection \u2013 change discarded.",
+      wallMinPoints: "The wall outline needs at least 3 corners \u2013 corner cannot be removed.",
+      wallSelfIntersectRemove: (idx) => `Corner ${idx} cannot be removed \u2013 result would self-intersect.`,
+      wallSelfIntersectMove: (idx) => `Wall point ${idx} would cause a self-intersection \u2013 change discarded.`,
+      furnitureOutsideRoom: (count) => `${count} item(s) are outside the room after the wall change.`
+    }
+  };
+  var LOCALE_MESSAGES = {
+    de: DE_MESSAGES,
+    en: EN_MESSAGES
+  };
+  function resolveMessages(locale = "de", overrides = {}) {
+    const base = LOCALE_MESSAGES[locale] ?? LOCALE_MESSAGES.de;
+    return {
+      contextMenu: { ...base.contextMenu, ...overrides.contextMenu },
+      validation: { ...base.validation, ...overrides.validation }
+    };
+  }
+
+  // src/renderers/room-renderer.ts
+  var VERTEX_RESOLVER_PRIORITY = 10;
+  var EDGE_RESOLVER_PRIORITY = 20;
+  var RoomRenderer = class {
+    constructor(ctx, layers) {
+      this.ctx = ctx;
+      this.layers = layers;
+      ctx.registerContextMenuResolver({
+        priority: VERTEX_RESOLVER_PRIORITY,
+        resolve: (evt) => this.resolveVertexContextMenu(evt)
+      });
+      ctx.registerContextMenuResolver({
+        priority: EDGE_RESOLVER_PRIORITY,
+        resolve: (evt) => this.resolveEdgeContextMenu(evt)
+      });
+    }
+    render() {
+      const wallPath = this.ctx.getWallPath();
+      const points = wallPath.map((p) => [this.ctx.px(p.x), this.ctx.px(p.y)]);
+      const outline = this.layers.room.polygon(points).fill("#f7f7f7").stroke({ color: "#333333", width: this.ctx.px(this.ctx.wallThicknessUnit), linejoin: "round" }).addClass("rp-room-outline");
+      if (this.ctx.opts.editable) {
+        outline.on("click", (evt) => this.handleWallClick(evt));
+        wallPath.forEach((pt, idx) => this.renderWallHandle(pt, idx));
+      }
+    }
+    /** Click on a wall edge inserts a new corner at the click point, splitting that edge in two. */
+    handleWallClick(evt) {
+      this.splitWallAtPoint(this.ctx.toContentUnit(evt.clientX, evt.clientY));
+    }
+    /** Splits the nearest wall segment at `p` into two segments. */
+    splitWallAtPoint(p) {
+      const wallPath = this.ctx.getWallPath();
+      const nearest = nearestWallSegment(p, wallPath);
+      if (!nearest || nearest.distance > this.ctx.wallSplitThresholdUnit) return;
+      const candidate = [...wallPath];
+      candidate.splice(nearest.index + 1, 0, { x: this.ctx.snap(nearest.point.x), y: this.ctx.snap(nearest.point.y) });
+      if (!isSimplePolygon(candidate)) {
+        this.ctx.opts.onValidationWarning({
+          code: "WALL_SELF_INTERSECT",
+          message: this.ctx.msg.validation.wallSelfIntersectNewPoint
+        });
+        return;
+      }
+      this.ctx.setWallPath(candidate);
+      this.ctx.requestRender();
+    }
+    /** Removes a corner (context menu "Ecke löschen"), merging its two adjacent wall segments into one. */
+    removeWallVertex(idx) {
+      const wallPath = this.ctx.getWallPath();
+      if (wallPath.length <= 3) {
+        this.ctx.opts.onValidationWarning({
+          code: "WALL_MIN_POINTS",
+          message: this.ctx.msg.validation.wallMinPoints
+        });
+        return;
+      }
+      const candidate = wallPath.filter((_, i) => i !== idx);
+      if (!isSimplePolygon(candidate)) {
+        this.ctx.opts.onValidationWarning({
+          code: "WALL_SELF_INTERSECT",
+          message: this.ctx.msg.validation.wallSelfIntersectRemove(idx)
+        });
+        return;
+      }
+      this.ctx.setWallPath(candidate);
+      this.ctx.checkFurnitureOutsideRoom();
+      this.ctx.requestRender();
+    }
+    renderWallHandle(pt, idx) {
+      const handle = this.layers.wallHandles.rect(8, 8).center(this.ctx.px(pt.x), this.ctx.px(pt.y)).fill("#ffffff").stroke({ color: "#333333", width: 1 }).addClass("rp-wall-handle");
+      handle.data("vertexIndex", idx);
+      handle.draggable();
+      handle.on("dragmove", () => {
+        const cx2 = this.ctx.toUnit(handle.cx());
+        const cy2 = this.ctx.toUnit(handle.cy());
+        const preview = [...this.ctx.getWallPath()];
+        preview[idx] = { x: cx2, y: cy2 };
+        const outline = this.layers.room.findOne(".rp-room-outline");
+        outline?.plot(preview.map((p) => [this.ctx.px(p.x), this.ctx.px(p.y)]));
+      });
+      handle.on("dragend", () => {
+        const x2 = this.ctx.snap(this.ctx.toUnit(handle.cx()));
+        const y2 = this.ctx.snap(this.ctx.toUnit(handle.cy()));
+        const candidate = [...this.ctx.getWallPath()];
+        candidate[idx] = { x: x2, y: y2 };
+        if (!isSimplePolygon(candidate)) {
+          this.ctx.opts.onValidationWarning({
+            code: "WALL_SELF_INTERSECT",
+            message: this.ctx.msg.validation.wallSelfIntersectMove(idx)
+          });
+          this.ctx.requestRender();
+          return;
+        }
+        this.ctx.setWallPath(candidate);
+        this.ctx.checkFurnitureOutsideRoom();
+        this.ctx.requestRender();
+      });
+    }
+    /** Resolves the corner-delete action by proximity instead of an exact hit on the tiny handle rectangle. */
+    resolveVertexContextMenu(evt) {
+      const p = this.ctx.toContentUnit(evt.clientX, evt.clientY);
+      const nearestVertex = nearestWallVertex(p, this.ctx.getWallPath());
+      if (!nearestVertex || nearestVertex.distance > this.ctx.wallVertexThresholdUnit) return null;
+      const idx = nearestVertex.index;
+      return [{ label: this.ctx.msg.contextMenu.removeCorner, onClick: () => this.removeWallVertex(idx) }];
+    }
+    resolveEdgeContextMenu(evt) {
+      const p = this.ctx.toContentUnit(evt.clientX, evt.clientY);
+      const nearest = nearestWallSegment(p, this.ctx.getWallPath());
+      if (!nearest || nearest.distance > this.ctx.wallSplitThresholdUnit) return null;
+      return [{ label: this.ctx.msg.contextMenu.splitWall, onClick: () => this.splitWallAtPoint(p) }];
+    }
+  };
+
+  // src/renderers/socket-renderer.ts
+  var SocketRenderer = class {
+    constructor(ctx, layer) {
+      this.ctx = ctx;
+      this.layer = layer;
+      ctx.registerContextMenuResolver({
+        priority: 0,
+        resolve: (evt) => {
+          const id = hitTestEntity(evt, "SOCKET");
+          return id === null ? null : this.buildContextMenuItems(id);
+        }
+      });
+    }
+    render(sockets) {
+      sockets.forEach((s) => this.renderSocket(s));
+    }
+    /** Sockets do not require wall snapping; their position is the already-validated snapped drop point. */
+    createFromTemplate(template, pos, tempId) {
+      return {
+        id: tempId,
+        name: sanitizeLabel(template.label),
+        socketTyp: template.socketTyp ?? "NETZWERK",
+        x: pos.x,
+        y: pos.y
+      };
+    }
+    /** Rename and delete actions for sockets. */
+    buildContextMenuItems(id) {
+      return this.ctx.buildNameableMenuItems("SOCKET", id);
+    }
+    renderSocket(s) {
+      const r = 5;
+      const color = s.socketTyp === "STROM" ? "#d9534f" : "#5cb85c";
+      const circle = this.layer.circle(r * 2).center(this.ctx.px(s.x), this.ctx.px(s.y)).fill(color).stroke({ color: "#333333", width: 1 }).addClass(`rp-socket rp-socket-${s.socketTyp.toLowerCase()}`);
+      circle.data("id", s.id);
+      circle.data("entity", "SOCKET");
+      if (this.ctx.opts.editable) this.makeMovable(circle, s);
+      const labelX = this.ctx.px(s.x) + r + 3;
+      const labelY = this.ctx.px(s.y) - 7;
+      const label = this.layer.text(s.name).move(labelX, labelY).font({ size: 9, family: "sans-serif" }).addClass("rp-socket-label").css("opacity", "0");
+      label.data("id", s.id);
+      label.data("entity", "SOCKET");
+      const showLabel = () => {
+        const s2 = 1 / this.ctx.getZoom();
+        label.attr("transform", `translate(${labelX}, ${labelY}) scale(${s2}) translate(${-labelX}, ${-labelY})`);
+        label.css("opacity", "1");
+      };
+      const hideLabel = () => label.css("opacity", "0");
+      circle.on("mouseenter", showLabel);
+      circle.on("mouseleave", hideLabel);
+      label.on("mouseenter", showLabel);
+      label.on("mouseleave", hideLabel);
+    }
+    /**
+     * Returns the socket's absolute room position using `cx()`/`cy()` instead of `x()`/`y()`.
+     *
+     * `svg.js` defines circle `x()`/`y()` as the left/top bbox edge, so using those values would shift
+     * the center by the radius on every drag.
+     */
+    elementToRoomPosition(el) {
+      return { x: this.ctx.toUnit(el.cx()), y: this.ctx.toUnit(el.cy()) };
+    }
+    makeMovable(el, model) {
+      if (!this.ctx.opts.editable) return;
+      el.draggable();
+      el.on("dragend", () => {
+        const roomPos = this.elementToRoomPosition(el);
+        if (!pointInPolygon(roomPos, this.ctx.getWallPath())) {
+          this.ctx.requestRender();
+          return;
+        }
+        const x2 = this.ctx.snap(this.ctx.toUnit(el.cx()));
+        const y2 = this.ctx.snap(this.ctx.toUnit(el.cy()));
+        model.x = x2;
+        model.y = y2;
+        this.ctx.requestRender();
+      });
+    }
   };
 
   // node_modules/@svgdotjs/svg.draggable.js/src/svg.draggable.js
@@ -5873,9 +6818,9 @@ var RoomPlan = (() => {
       const dx2 = currentClick.x - lastClick.x;
       const dy2 = currentClick.y - lastClick.y;
       if (!dx2 && !dy2) return box;
-      const x5 = box.x + dx2;
-      const y5 = box.y + dy2;
-      this.box = new Box(x5, y5, box.w, box.h);
+      const x2 = box.x + dx2;
+      const y2 = box.y + dy2;
+      this.box = new Box(x2, y2, box.w, box.h);
       this.lastClick = currentClick;
       if (this.el.dispatch("dragmove", {
         event: ev,
@@ -5886,13 +6831,13 @@ var RoomPlan = (() => {
       }).defaultPrevented) {
         return;
       }
-      this.move(x5, y5);
+      this.move(x2, y2);
     }
-    move(x5, y5) {
+    move(x2, y2) {
       if (this.el.type === "svg") {
-        G.prototype.move.call(this.el, x5, y5);
+        G.prototype.move.call(this.el, x2, y2);
       } else {
-        this.el.move(x5, y5);
+        this.el.move(x2, y2);
       }
     }
     endDrag(ev) {
@@ -5920,7 +6865,7 @@ var RoomPlan = (() => {
   }
   var RoomPlanRenderer = class {
     constructor(container, data2, options = {}) {
-      /** Aktuelle Ausdehnung des Wandpfads in Raum-Einheiten; wird bei jedem render() über updateCanvasSize() neu berechnet. */
+      /** Current room-wall extent in room units, recalculated on each render via `updateCanvasSize()`. */
       this.maxX = 0;
       this.maxY = 0;
       this.zoom = 1;
@@ -5928,19 +6873,19 @@ var RoomPlan = (() => {
       this.zoomMax = 3;
       this.panX = 0;
       this.panY = 0;
-      /** Sichtbare Wanddicke in Raum-Einheiten (Polygon-Strichbreite + Tür-/Fenster-Öffnungstiefe). */
+      /** Visible wall thickness in room units, matching the polygon stroke width and feature opening depth. */
       this.wallThicknessUnit = 5;
       /**
-       * Trefftoleranz für "Wand trennen" (Klick/Rechtsklick auf eine Kante) – an die sichtbare
-       * Wanddicke gekoppelt statt fest verdrahtet, damit das Kontextmenü nur nah an der tatsächlich
-       * gezeichneten Wandlinie erscheint statt in einem davon unabhängig weiten Bereich.
+       * Hit tolerance for splitting a wall segment at a click or right-click near an edge.
+       *
+       * It is derived from the visible wall thickness so the menu appears close to the actual wall band.
        */
       this.wallSplitThresholdUnit = this.wallThicknessUnit / 2 + 5;
       /**
-       * Trefftoleranz für "Ecke löschen" im Kontextmenü – bewusst größer als der winzige
-       * 8×8px-Handle selbst (der reine DOM-Hit-Test wäre auf dem tatsächlichen Handle-Rechteck
-       * kaum zu treffen), daher proximity-basiert wie bei wallSplitThresholdUnit statt exaktem
-       * target.closest()-Treffer (siehe nearestWallVertex() in geometry.ts).
+       * Hit tolerance for removing a wall corner from the context menu.
+       *
+       * This is intentionally larger than the tiny handle itself, so the action is resolved by
+       * proximity instead of by an exact hit on the small handle rectangle.
        */
       this.wallVertexThresholdUnit = 12;
       this.featureSnapThresholdUnit = 25;
@@ -5975,8 +6920,39 @@ var RoomPlan = (() => {
         pannable: options.pannable ?? true,
         fitOnLoad: options.fitOnLoad ?? true,
         editable: options.editable ?? true,
-        onValidationWarning: options.onValidationWarning ?? (() => void 0)
+        onValidationWarning: options.onValidationWarning ?? (() => void 0),
+        onAssetLookup: options.onAssetLookup ?? (async () => null),
+        locale: options.locale ?? "de",
+        messages: options.messages ?? {}
       };
+      this.msg = resolveMessages(this.opts.locale, this.opts.messages);
+      const { context, dispatcher } = createRenderContext({
+        px: (u) => this.px(u),
+        toUnit: (px) => this.toUnit(px),
+        snap: (u) => this.snap(u),
+        toContentUnit: (clientX, clientY) => this.toContentUnit(clientX, clientY),
+        getSvgRoot: () => this.draw,
+        getZoom: () => this.zoom,
+        getWallPath: () => this.wallPath,
+        setWallPath: (path) => {
+          this.wallPath = path;
+        },
+        wallThicknessUnit: this.wallThicknessUnit,
+        wallSplitThresholdUnit: this.wallSplitThresholdUnit,
+        wallVertexThresholdUnit: this.wallVertexThresholdUnit,
+        featureSnapThresholdUnit: this.featureSnapThresholdUnit,
+        opts: this.opts,
+        msg: this.msg,
+        requestRender: () => this.render(),
+        checkFurnitureOutsideRoom: () => this.checkFurnitureOutsideRoom(),
+        deleteEntityAndRender: (entity, id) => this.deleteEntityAndRender(entity, id),
+        buildNameableMenuItems: (entity, id) => {
+          const list = entity === "DESK" ? this.data.desks : this.data.sockets;
+          return buildNameableMenuItems(this.ctx, entity, id, list, this.data.raumName);
+        }
+      });
+      this.ctx = context;
+      this.contextMenuDispatcher = dispatcher;
       this.maxX = Math.max(...this.wallPath.map((p) => p.x));
       this.maxY = Math.max(...this.wallPath.map((p) => p.y));
       const { totalW, totalH } = this.computeCanvasSize();
@@ -5991,6 +6967,11 @@ var RoomPlan = (() => {
         assets: this.content.group().addClass("rp-layer-assets"),
         sockets: this.content.group().addClass("rp-layer-sockets")
       };
+      this.roomRenderer = new RoomRenderer(this.ctx, { room: this.layers.room, wallHandles: this.layers.wallHandles });
+      this.featureRenderer = new FeatureRenderer(this.ctx, this.layers.features, () => this.data.features);
+      this.socketRenderer = new SocketRenderer(this.ctx, this.layers.sockets);
+      this.assetRenderer = new AssetRenderer(this.ctx, this.layers.assets, () => this.data.desks);
+      this.deskRenderer = new DeskRenderer(this.ctx, this.layers.desks, this.assetRenderer, () => this.data.assets);
       this.attachDropZone();
       if (this.opts.zoomable || this.opts.pannable) this.attachViewControls();
       this.attachContextMenu();
@@ -6037,6 +7018,7 @@ var RoomPlan = (() => {
         this.contextMenuHandler = null;
       }
       this.draw.remove();
+      this.assetRenderer.clearLookupCache();
     }
     // --- Einheiten -------------------------------------------------------------
     px(u) {
@@ -6057,18 +7039,10 @@ var RoomPlan = (() => {
         y: this.toUnit(p.y - this.opts.wallMarginPx)
       };
     }
-    /** Applies the group's full position + rotation as a single explicit transform. */
-    setEntityTransform(g, xUnit, yUnit, rotationDeg, wUnit, hUnit) {
-      const cx3 = this.px(wUnit) / 2;
-      const cy3 = this.px(hUnit) / 2;
-      g.attr("transform", `translate(${this.px(xUnit)}, ${this.px(yUnit)}) rotate(${rotationDeg}, ${cx3}, ${cy3})`);
-    }
-    // --- Hintergrund-Raster (auf dem Container, nicht im SVG – siehe CLAUDE.md) -----------
+    // --- Container background grid --------------------------------------------------
     /**
-     * Rastert den Container-Hintergrund per CSS statt eines fix-großen SVG-Rects: so bleibt
-     * das Raster beim Pannen/Zoomen über den GESAMTEN sichtbaren Viewport hinweg sichtbar,
-     * nicht nur innerhalb der ursprünglichen Canvas-Größe (die sonst wie ein "festes Bild"
-     * links oben in der Region wirkt, mit leerem/weißem Rand sobald man herausgepannt hat).
+     * Renders the container background via CSS instead of an oversized SVG rect so the grid stays visible
+     * across the whole viewport while panning and zooming.
      */
     setupContainerBackground() {
       this.container.style.backgroundColor = "#ffffff";
@@ -6105,7 +7079,7 @@ var RoomPlan = (() => {
       this.draw.node.addEventListener("wheel", this.wheelHandler, { passive: false });
       if (this.opts.pannable) this.attachDragPan();
     }
-    /** Mittlere Maustaste oder Shift+Linksklick zum Ziehen des Viewports (Klicks auf Entitäten/Handles haben Vorrang, siehe mousedown-Bubbling). */
+    /** Middle mouse button or Shift+left-click pans the viewport while entity interactions keep priority. */
     attachDragPan() {
       this.panMouseMoveHandler = (evt) => {
         if (!this.isPanning) return;
@@ -6151,9 +7125,9 @@ var RoomPlan = (() => {
     getZoom() {
       return this.zoom;
     }
-    setPan(x5, y5) {
-      this.panX = x5;
-      this.panY = y5;
+    setPan(x2, y2) {
+      this.panX = x2;
+      this.panY = y2;
       this.applyViewTransform();
     }
     panBy(dx2, dy2) {
@@ -6165,7 +7139,7 @@ var RoomPlan = (() => {
     getPan() {
       return { x: this.panX, y: this.panY };
     }
-    /** Setzt Zoom und Pan gemeinsam zurück (z.B. für einen "Ansicht zurücksetzen"-Button). */
+    /** Resets zoom and pan together for a "reset view" action. */
     resetView() {
       this.zoom = 1;
       this.panX = 0;
@@ -6173,18 +7147,10 @@ var RoomPlan = (() => {
       this.applyViewTransform();
     }
     /**
-     * Zoomt/pannt so, dass der gesamte Wandpfad inkl. Randbereich (`this.draw`'s aktuelle Größe,
-     * also `computeCanvasSize()`) vollständig und zentriert in die AKTUELLE Größe des Host-
-     * Containers passt (`container.clientWidth/Height` – Inhalt+Padding, ohne Border/Scrollbar).
-     * Wird per `fitOnLoad`-Option (Default true) automatisch am Ende des Konstruktors aufgerufen;
-     * auch als öffentliche API gedacht, um z.B. nach `loadData()` mit einem komplett anderen
-     * Raum oder nach einer Container-Resize erneut einzupassen (z.B. ein Host-seitiger
-     * "An Fenster anpassen"-Button, siehe `examples/palette-demo.html`).
+     * Fits the full wall path and margin into the current host container dimensions.
      *
-     * Kein Effekt, wenn der Container aktuell Größe 0 hat (z.B. `display: none` oder noch nicht
-     * im DOM gelayoutet, etwa in einem noch nicht sichtbaren APEX-Tab/Modal) – in dem Fall bleibt
-     * der aktuelle Zoom/Pan unverändert; der Host sollte diese Methode dann manuell erneut
-     * aufrufen, sobald der Container eine reale Größe hat (z.B. beim Tab-/Modal-Öffnen).
+     * This is used both as an automatic load-time fit and as a public API for host-driven reset actions.
+     * If the container has zero size, the method exits without changing the current zoom or pan.
      */
     fitToContainer() {
       const containerW = this.container.clientWidth;
@@ -6206,12 +7172,9 @@ var RoomPlan = (() => {
       };
     }
     /**
-     * Rechnet maxX/maxY aus dem AKTUELLEN wallPath neu und passt die SVG-Größe
-     * entsprechend an. Muss nach JEDER Änderung von wallPath laufen (Wand-
-     * Handle-Drag, Trennen, Ecke entfernen, loadData()) – sonst bleibt die
-     * Canvas-Größe auf den alten Maßen stehen, wenn der Wandpfad größer/
-     * kleiner wird. Wird deshalb zentral am Anfang von render() aufgerufen
-     * statt an jeder einzelnen Änderungsstelle.
+     * Recomputes maxX/maxY from the current wall path and resizes the SVG accordingly.
+     *
+     * This is called at the start of render() so every wall edit automatically updates the canvas size.
      */
     updateCanvasSize() {
       this.maxX = Math.max(...this.wallPath.map((p) => p.x));
@@ -6227,448 +7190,21 @@ var RoomPlan = (() => {
       this.layers.desks.clear();
       this.layers.assets.clear();
       this.layers.sockets.clear();
-      this.renderWalls();
-      this.data.features.forEach((f) => this.renderFeature(f));
-      this.data.desks.forEach((d) => this.renderDesk(d));
-      this.data.assets.filter((a) => a.deskId === null || a.deskId === void 0).forEach((a) => this.renderFreeAsset(a));
-      this.data.sockets.forEach((s) => this.renderSocket(s));
+      this.roomRenderer.render();
+      this.featureRenderer.render();
+      this.deskRenderer.render(this.data.desks);
+      this.assetRenderer.render(this.data.assets.filter((a) => a.deskId === null || a.deskId === void 0));
+      this.socketRenderer.render(this.data.sockets);
     }
-    renderWalls() {
-      const points = this.wallPath.map((p) => [this.px(p.x), this.px(p.y)]);
-      const outline = this.layers.room.polygon(points).fill("#f7f7f7").stroke({ color: "#333333", width: this.px(this.wallThicknessUnit), linejoin: "round" }).addClass("rp-room-outline");
-      if (this.opts.editable) {
-        outline.on("click", (evt) => this.handleWallClick(evt));
-        this.wallPath.forEach((pt, idx) => this.renderWallHandle(pt, idx));
-      }
-    }
-    /** Click on a wall edge inserts a new corner at the click point, splitting that edge in two. */
-    handleWallClick(evt) {
-      this.splitWallAtPoint(this.toContentUnit(evt.clientX, evt.clientY));
-    }
-    /** Trennt die nächstgelegene Wandkante an `p` in zwei Segmente (Klick auf Wand ODER Kontextmenü "Wand trennen"). */
-    splitWallAtPoint(p) {
-      const nearest = nearestWallSegment(p, this.wallPath);
-      if (!nearest || nearest.distance > this.wallSplitThresholdUnit) return;
-      const candidate = [...this.wallPath];
-      candidate.splice(nearest.index + 1, 0, { x: this.snap(nearest.point.x), y: this.snap(nearest.point.y) });
-      if (!isSimplePolygon(candidate)) {
-        this.opts.onValidationWarning({
-          code: "WALL_SELF_INTERSECT",
-          message: "Neuer Wandpunkt w\xFCrde zu einer Selbst\xFCberschneidung f\xFChren \u2013 \xC4nderung verworfen."
-        });
-        return;
-      }
-      this.wallPath = candidate;
-      this.render();
-    }
-    /** Removes a corner (context menu "Ecke löschen"), merging its two adjacent wall segments into one. */
-    removeWallVertex(idx) {
-      if (this.wallPath.length <= 3) {
-        this.opts.onValidationWarning({
-          code: "WALL_MIN_POINTS",
-          message: "Der Wandverlauf ben\xF6tigt mindestens 3 Eckpunkte \u2013 Ecke kann nicht entfernt werden."
-        });
-        return;
-      }
-      const candidate = this.wallPath.filter((_, i) => i !== idx);
-      if (!isSimplePolygon(candidate)) {
-        this.opts.onValidationWarning({
-          code: "WALL_SELF_INTERSECT",
-          message: `Eckpunkt ${idx} kann nicht entfernt werden \u2013 Ergebnis w\xFCrde sich selbst schneiden.`
-        });
-        return;
-      }
-      this.wallPath = candidate;
-      this.checkFurnitureOutsideRoom();
-      this.render();
-    }
-    renderWallHandle(pt, idx) {
-      const handle = this.layers.wallHandles.rect(8, 8).center(this.px(pt.x), this.px(pt.y)).fill("#ffffff").stroke({ color: "#333333", width: 1 }).addClass("rp-wall-handle");
-      handle.data("vertexIndex", idx);
-      handle.draggable();
-      handle.on("dragmove", () => {
-        const cx3 = this.toUnit(handle.cx());
-        const cy3 = this.toUnit(handle.cy());
-        const preview = [...this.wallPath];
-        preview[idx] = { x: cx3, y: cy3 };
-        const outline = this.layers.room.findOne(".rp-room-outline");
-        outline?.plot(preview.map((p) => [this.px(p.x), this.px(p.y)]));
-      });
-      handle.on("dragend", () => {
-        const x5 = this.snap(this.toUnit(handle.cx()));
-        const y5 = this.snap(this.toUnit(handle.cy()));
-        const candidate = [...this.wallPath];
-        candidate[idx] = { x: x5, y: y5 };
-        if (!isSimplePolygon(candidate)) {
-          this.opts.onValidationWarning({
-            code: "WALL_SELF_INTERSECT",
-            message: `Wandpunkt ${idx} w\xFCrde zu einer Selbst\xFCberschneidung f\xFChren \u2013 \xC4nderung verworfen.`
-          });
-          this.render();
-          return;
-        }
-        this.wallPath = candidate;
-        this.checkFurnitureOutsideRoom();
-        this.render();
-      });
-    }
-    /** Weiche Prüfung (nur Warnung, keine Blockade): liegt Möbel außerhalb des neuen Polygons? */
+    /** Soft validation: warns if furniture remains outside the new room polygon. */
     checkFurnitureOutsideRoom() {
       const outsideCount = this.data.desks.filter((d) => !pointInPolygon({ x: d.x, y: d.y }, this.wallPath)).length + this.data.assets.filter((a) => a.deskId === null || a.deskId === void 0).filter((a) => !pointInPolygon({ x: a.x, y: a.y }, this.wallPath)).length + this.data.sockets.filter((s) => !pointInPolygon({ x: s.x, y: s.y }, this.wallPath)).length;
       if (outsideCount > 0) {
         this.opts.onValidationWarning({
           code: "FURNITURE_OUTSIDE_ROOM",
-          message: `${outsideCount} Element(e) liegen nach der Wand\xE4nderung au\xDFerhalb des Raums.`
+          message: this.msg.validation.furnitureOutsideRoom(outsideCount)
         });
       }
-    }
-    renderFeature(f) {
-      if (f.typ === "TUER") {
-        this.renderDoorFeature(f);
-        return;
-      }
-      const w = this.px(f.breite);
-      const h = this.px(this.wallThicknessUnit);
-      const rect = this.layers.features.rect(w, h).fill("#4a90d9").addClass("rp-feature rp-feature-fenster");
-      this.setFeatureTransform(rect, f);
-      rect.data("id", f.id);
-      rect.data("entity", "FEATURE");
-      if (this.opts.editable) this.makeFeatureMovable(rect, f, (el, ff) => this.setFeatureTransform(el, ff));
-    }
-    /**
-     * Schematische Türdarstellung: Öffnung (in Raumfarbe, "schneidet" die Wandlinie optisch frei),
-     * Türblatt im rechten Winkel (= geöffnete Stellung) sowie ein gestrichelter Öffnungsradius in
-     * hellerem Grau – analog zur üblichen Architekten-Symbolik. Anschlagseite (f.anschlag) und
-     * Schwenkrichtung (f.richtung) bestimmen Scharnierpunkt und Vorzeichen des Radius.
-     */
-    renderDoorFeature(f) {
-      const wPx = this.px(f.breite);
-      const hPx = this.px(this.wallThicknessUnit);
-      const anschlag = f.anschlag ?? "LINKS";
-      const richtung = f.richtung ?? "INNEN";
-      const sign = richtung === "INNEN" ? 1 : -1;
-      const hingeX = anschlag === "LINKS" ? 0 : wPx;
-      const farX = anschlag === "LINKS" ? wPx : 0;
-      const pivotY = hPx / 2;
-      const center2 = { x: hingeX, y: pivotY };
-      const closedTip = { x: farX, y: pivotY };
-      const openTip = { x: hingeX, y: pivotY + sign * wPx };
-      const g = this.layers.features.group().addClass("rp-feature rp-feature-tuer");
-      g.rect(wPx, hPx).fill("#f7f7f7");
-      g.path(arcPathBetween(center2, closedTip, openTip, wPx)).fill("none").stroke({ color: "#cccccc", width: 1 }).attr("stroke-dasharray", "3,2");
-      g.line(hingeX, pivotY, openTip.x, openTip.y).stroke({ color: "#8b5a2b", width: 3 });
-      this.setFeatureGroupTransform(g, f);
-      g.data("id", f.id);
-      g.data("entity", "FEATURE");
-      if (this.opts.editable) this.makeFeatureMovable(g, f, (el, ff) => this.setFeatureGroupTransform(el, ff));
-    }
-    /**
-     * Setzt Position + Rotation eines Feature-Rects über move()+transform-Attribut (statt
-     * .rotate(), das svg.js RELATIV zum aktuellen Transform anwendet – bei wiederholten
-     * Aufrufen während eines Live-Drags würde sich die Rotation sonst aufsummieren statt
-     * ersetzt zu werden).
-     */
-    setFeatureTransform(rect, f) {
-      const xPx = this.px(f.x);
-      const yPx = this.px(f.y);
-      const wPx = this.px(f.breite);
-      const hPx = this.px(this.wallThicknessUnit);
-      rect.move(xPx, yPx);
-      rect.attr("transform", `rotate(${f.rotation ?? 0}, ${xPx + wPx / 2}, ${yPx + hPx / 2})`);
-    }
-    /**
-     * Positioniert die Tür-Gruppe über ein einzelnes translate()+rotate()-transform-Attribut statt
-     * über .move() (bbox-basiert bei G, siehe CLAUDE.md "Known bug fixed: desk position resetting
-     * to (0,0)") – analog zu setEntityTransform()/setFeatureTransform().
-     */
-    setFeatureGroupTransform(g, f) {
-      const xPx = this.px(f.x);
-      const yPx = this.px(f.y);
-      const wPx = this.px(f.breite);
-      const hPx = this.px(this.wallThicknessUnit);
-      g.attr("transform", `translate(${xPx}, ${yPx}) rotate(${f.rotation ?? 0}, ${wPx / 2}, ${hPx / 2})`);
-    }
-    /** Tür/Fenster lassen sich nur ENTLANG der jeweils nächsten Wand verschieben (nie frei im Raum). */
-    makeFeatureMovable(el, f, applyTransform) {
-      if (!this.opts.editable) return;
-      el.draggable();
-      el.on("dragmove", (evt) => {
-        evt.preventDefault();
-        const detail = evt.detail;
-        if (!detail?.event) return;
-        const p = this.toContentUnit(detail.event.clientX, detail.event.clientY);
-        const nearest = nearestWallSegment(p, this.wallPath);
-        if (!nearest) return;
-        const halfThicknessUnit = this.wallThicknessUnit / 2;
-        applyTransform(el, {
-          ...f,
-          x: nearest.point.x - f.breite / 2,
-          y: nearest.point.y - halfThicknessUnit,
-          rotation: nearest.angleDeg
-        });
-      });
-      el.on("dragend", (evt) => {
-        const detail = evt.detail;
-        const pointerEvt = detail?.event;
-        if (!pointerEvt) {
-          this.render();
-          return;
-        }
-        const p = this.toContentUnit(pointerEvt.clientX, pointerEvt.clientY);
-        const nearest = nearestWallSegment(p, this.wallPath);
-        if (!nearest || nearest.distance > this.featureSnapThresholdUnit) {
-          this.render();
-          return;
-        }
-        this.snapFeatureToWall(f, nearest.point, nearest.angleDeg);
-        this.render();
-      });
-    }
-    snapFeatureToWall(f, wallPoint, angleDeg) {
-      const halfThicknessUnit = this.wallThicknessUnit / 2;
-      f.x = this.snap(wallPoint.x - f.breite / 2);
-      f.y = this.snap(wallPoint.y - halfThicknessUnit);
-      f.rotation = angleDeg;
-    }
-    /** Kontextmenü-Aktion "Entlang der Wand verschieben": richtet ein Feature neu an seiner aktuell nächsten Wand aus. */
-    realignFeatureToWall(featureId) {
-      const f = this.data.features.find((ft) => ft.id === featureId);
-      if (!f) return;
-      const halfThicknessUnit = this.wallThicknessUnit / 2;
-      const center2 = { x: f.x + f.breite / 2, y: f.y + halfThicknessUnit };
-      const nearest = nearestWallSegment(center2, this.wallPath);
-      if (!nearest) return;
-      this.snapFeatureToWall(f, nearest.point, nearest.angleDeg);
-      this.render();
-    }
-    /** Kontextmenü-Aktionen für Türen: Anschlagseite bzw. Schwenkrichtung setzen. */
-    setDoorAnschlag(featureId, anschlag) {
-      const f = this.data.features.find((ft) => ft.id === featureId);
-      if (!f) return;
-      f.anschlag = anschlag;
-      this.render();
-    }
-    setDoorRichtung(featureId, richtung) {
-      const f = this.data.features.find((ft) => ft.id === featureId);
-      if (!f) return;
-      f.richtung = richtung;
-      this.render();
-    }
-    renderDesk(d) {
-      const g = this.layers.desks.group().addClass("rp-desk");
-      const w = this.px(d.breite);
-      const h = this.px(d.hoehe);
-      this.setEntityTransform(g, d.x, d.y, d.rotation ?? 0, d.breite, d.hoehe);
-      g.rect(w, h).fill(DESK_FILL_COLORS[d.deskTyp]).stroke({ color: "#555555", width: 1 });
-      g.text(d.name).move(4, 2).font({ size: 11, family: "sans-serif" });
-      g.data("id", d.id);
-      g.data("entity", "DESK");
-      this.data.assets.filter((a) => a.deskId === d.id).forEach((a) => this.renderDeskAsset(g, a, d));
-      if (this.opts.editable) {
-        this.makeGroupMovable(g, this.layers.desks, d, "DESK");
-        this.addRotateHandle(g, d, d.breite, d.hoehe);
-      }
-    }
-    renderDeskAsset(deskGroup, a, desk) {
-      const w = this.px(a.breite);
-      const h = this.px(a.hoehe);
-      const g = deskGroup.group().addClass("rp-asset-group");
-      this.setEntityTransform(g, a.x, a.y, a.rotation ?? 0, a.breite, a.hoehe);
-      g.rect(w, h).fill("#f5c451").stroke({ color: "#8a6d1a", width: 1 }).addClass("rp-asset");
-      g.text(a.label).move(2, 1).font({ size: 9 });
-      g.data("id", a.id);
-      g.data("entity", "ASSET");
-      if (this.opts.editable) {
-        this.makeGroupMovable(g, deskGroup, a, "ASSET", {
-          minX: 0,
-          minY: 0,
-          maxX: desk.breite - a.breite,
-          maxY: desk.hoehe - a.hoehe
-        });
-        this.addRotateHandle(g, a, a.breite, a.hoehe);
-      }
-    }
-    renderFreeAsset(a) {
-      const w = this.px(a.breite);
-      const h = this.px(a.hoehe);
-      const g = this.layers.assets.group().addClass("rp-asset-group rp-asset-free");
-      this.setEntityTransform(g, a.x, a.y, a.rotation ?? 0, a.breite, a.hoehe);
-      g.rect(w, h).fill("#f5c451").stroke({ color: "#8a6d1a", width: 1 }).addClass("rp-asset");
-      g.text(a.label).move(2, 1).font({ size: 9 });
-      g.data("id", a.id);
-      g.data("entity", "ASSET");
-      if (this.opts.editable) {
-        this.makeGroupMovable(g, this.layers.assets, a, "ASSET");
-        this.addRotateHandle(g, a, a.breite, a.hoehe);
-      }
-    }
-    renderSocket(s) {
-      const r = 5;
-      const color = s.socketTyp === "STROM" ? "#d9534f" : "#5cb85c";
-      const circle = this.layers.sockets.circle(r * 2).center(this.px(s.x), this.px(s.y)).fill(color).stroke({ color: "#333333", width: 1 }).addClass(`rp-socket rp-socket-${s.socketTyp.toLowerCase()}`);
-      circle.data("id", s.id);
-      circle.data("entity", "SOCKET");
-      if (this.opts.editable) this.makeMovable(circle, s);
-    }
-    // --- Rotate-Handle (Tische + Assets) -----------------------------------------
-    /** Small drag handle above the shape's center that sets Position.rotation, snapped to 15°. */
-    addRotateHandle(g, model, wUnit, hUnit) {
-      if (!this.opts.editable) return;
-      const w = this.px(wUnit);
-      const cx3 = w / 2;
-      const handleOffsetY = -16;
-      const handleGroup = g.group().addClass("rp-rotate-handle");
-      handleGroup.line(cx3, 0, cx3, handleOffsetY).stroke({ color: "#888888", width: 1 });
-      handleGroup.circle(10).center(cx3, handleOffsetY).fill("#ffffff").stroke({ color: "#4a90d9", width: 1.5 });
-      handleGroup.draggable();
-      const angleFromPointer = (clientX, clientY) => {
-        const box = g.rbox(this.draw);
-        const centerX = box.x + box.width / 2;
-        const centerY = box.y + box.height / 2;
-        const pointer = this.draw.point(clientX, clientY);
-        const angleRad = Math.atan2(pointer.y - centerY, pointer.x - centerX);
-        let deg = angleRad * 180 / Math.PI + 90;
-        deg = Math.round(deg / 15) * 15;
-        return (deg % 360 + 360) % 360;
-      };
-      handleGroup.on("dragmove", (evt) => {
-        evt.preventDefault();
-        const detail = evt.detail;
-        if (!detail?.event) return;
-        const deg = angleFromPointer(detail.event.clientX, detail.event.clientY);
-        this.setEntityTransform(g, model.x, model.y, deg, wUnit, hUnit);
-      });
-      handleGroup.on("dragend", (evt) => {
-        evt.preventDefault();
-        const detail = evt.detail;
-        if (!detail?.event) return;
-        model.rotation = angleFromPointer(detail.event.clientX, detail.event.clientY);
-        this.render();
-      });
-    }
-    // --- Verschieben bestehender Elemente / Entfernen durch Herausziehen --------
-    /**
-     * Bewegt eine Gruppe (Desk/Asset) über einen selbst gesetzten `transform`
-     * statt über svg.js' bbox-basiertes G.move()/dmove(): letzteres bricht bei
-     * einer frisch erzeugten, noch leeren Gruppe (bbox = 0) und mutiert bei
-     * einer gefüllten Gruppe stattdessen jedes Kind einzeln statt die Gruppe
-     * selbst zu verschieben. Details siehe CLAUDE.md.
-     *
-     * WICHTIG: Position wird NICHT aus svg.draggable.js' `detail.box` gelesen
-     * (dessen interne Verfolgung basiert auf `el.point()`, also der CTM des
-     * gezogenen Elements SELBST – da wir dessen `transform`-Attribut jeden
-     * Frame neu setzen, ändert sich diese CTM laufend und die kumulierte
-     * Verfolgung der Bibliothek läuft dem Mauszeiger nach, umso stärker, je
-     * kleiner scalePxPerUnit/Zoom die Mausdelta-Umrechnung verstärkt). Stattdessen
-     * wird die Mausposition bei jedem Frame über den STABILEN `parent` (dessen
-     * eigener Transform sich während dieses Drags nicht ändert) in dieselbe
-     * Koordinatenbasis wie `model.x`/`model.y` umgerechnet und die Position
-     * absolut ab dem Drag-Start neu berechnet (kein Aufsummieren von Deltas).
-     */
-    makeGroupMovable(g, parent, model, entity, bounds) {
-      if (!this.opts.editable) return;
-      g.draggable();
-      let dragStart = null;
-      let modelStartX = model.x;
-      let modelStartY = model.y;
-      const currentParentPos = (clientX, clientY) => {
-        const p = parent.point(clientX, clientY);
-        return { x: this.toUnit(p.x), y: this.toUnit(p.y) };
-      };
-      const computePosition = (clientX, clientY) => {
-        if (!dragStart) return { x: modelStartX, y: modelStartY };
-        const now = currentParentPos(clientX, clientY);
-        let x5 = modelStartX + (now.x - dragStart.x);
-        let y5 = modelStartY + (now.y - dragStart.y);
-        if (bounds) {
-          x5 = Math.max(bounds.minX, Math.min(bounds.maxX, x5));
-          y5 = Math.max(bounds.minY, Math.min(bounds.maxY, y5));
-        }
-        return { x: x5, y: y5 };
-      };
-      g.on("dragstart", (evt) => {
-        const detail = evt.detail;
-        if (!detail?.event) return;
-        modelStartX = model.x;
-        modelStartY = model.y;
-        dragStart = currentParentPos(detail.event.clientX, detail.event.clientY);
-      });
-      g.on("dragmove", (evt) => {
-        evt.preventDefault();
-        const detail = evt.detail;
-        if (!detail?.event) return;
-        const { x: x5, y: y5 } = computePosition(detail.event.clientX, detail.event.clientY);
-        this.setEntityTransform(g, x5, y5, model.rotation ?? 0, model.breite, model.hoehe);
-      });
-      g.on("dragend", (evt) => {
-        const detail = evt.detail;
-        const pointerEvt = detail.event;
-        const { x: x5, y: y5 } = pointerEvt ? computePosition(pointerEvt.clientX, pointerEvt.clientY) : { x: modelStartX, y: modelStartY };
-        dragStart = null;
-        const roomPos = entity === "ASSET" && model.deskId !== null && model.deskId !== void 0 ? this.deskRelativeToRoom(x5, y5, model.deskId) : { x: x5, y: y5 };
-        if (!pointInPolygon(roomPos, this.wallPath)) {
-          this.render();
-          return;
-        }
-        if (entity === "ASSET") {
-          this.handleAssetDragEnd(model, roomPos);
-          return;
-        }
-        model.x = this.snap(x5);
-        model.y = this.snap(y5);
-        this.render();
-      });
-    }
-    deskRelativeToRoom(x5, y5, deskId) {
-      const desk = this.data.desks.find((d) => d.id === deskId);
-      return desk ? { x: desk.x + x5, y: desk.y + y5 } : { x: x5, y: y5 };
-    }
-    /**
-     * Absolute Raumposition eines Sockets (einziger verbleibender Nutzer von makeMovable()).
-     * Nutzt bewusst cx()/cy() statt x()/y(): svg.js definiert bei Circle/Ellipse
-     * x() als cx() - rx() (linke Bbox-Kante!) und move(x,y) setzt entsprechend
-     * cx = x + rx – bei einem Kreis mit Radius r würde jedes Drag den Mittelpunkt
-     * um r verschieben (siehe circled.js). cx()/cy() adressieren direkt das
-     * Zentrum, unabhängig vom Radius.
-     */
-    elementToRoomPosition(el) {
-      return { x: this.toUnit(el.cx()), y: this.toUnit(el.cy()) };
-    }
-    makeMovable(el, model) {
-      if (!this.opts.editable) return;
-      el.draggable();
-      el.on("dragend", () => {
-        const roomPos = this.elementToRoomPosition(el);
-        if (!pointInPolygon(roomPos, this.wallPath)) {
-          this.render();
-          return;
-        }
-        const x5 = this.snap(this.toUnit(el.cx()));
-        const y5 = this.snap(this.toUnit(el.cy()));
-        el.center(this.px(x5), this.px(y5));
-        model.x = x5;
-        model.y = y5;
-      });
-    }
-    /**
-     * Docking-Logik: liegt der Loslass-Punkt über einem Tisch, wird das Gerät an
-     * diesen Tisch gebunden (Koordinaten relativ), sonst frei im Raum platziert
-     * (Koordinaten absolut, deskId = null).
-     */
-    handleAssetDragEnd(asset, roomPos) {
-      const targetDesk = this.data.desks.find(
-        (d) => roomPos.x >= d.x && roomPos.x <= d.x + d.breite && roomPos.y >= d.y && roomPos.y <= d.y + d.hoehe
-      );
-      if (targetDesk) {
-        asset.deskId = targetDesk.id;
-        asset.x = this.snap(roomPos.x - targetDesk.x);
-        asset.y = this.snap(roomPos.y - targetDesk.y);
-      } else {
-        asset.deskId = null;
-        asset.x = this.snap(roomPos.x);
-        asset.y = this.snap(roomPos.y);
-      }
-      this.render();
     }
     deleteEntity(entity, id) {
       switch (entity) {
@@ -6689,7 +7225,7 @@ var RoomPlan = (() => {
           break;
       }
     }
-    // --- Neuanlage per Drag aus der Seitenleiste (natives HTML5 Drag&Drop) ------
+    // --- Creation by drag from the sidebar (native HTML5 drag and drop) ------
     attachDropZone() {
       const svgEl = this.draw.node;
       this.dragOverHandler = (evt) => evt.preventDefault();
@@ -6720,68 +7256,28 @@ var RoomPlan = (() => {
       const raw_pos = this.toContentUnit(evt.clientX, evt.clientY);
       const tempId = nextTempId();
       if (template.kind === "FEATURE") {
-        this.dropFeatureOnWall(template, raw_pos, tempId);
+        const feature = this.featureRenderer.createFromTemplate(template, raw_pos, tempId);
+        if (feature) {
+          this.data.features.push(feature);
+          this.render();
+        }
         return;
       }
-      const x5 = this.snap(raw_pos.x);
-      const y5 = this.snap(raw_pos.y);
-      if (!pointInPolygon({ x: x5, y: y5 }, this.wallPath)) {
+      const x2 = this.snap(raw_pos.x);
+      const y2 = this.snap(raw_pos.y);
+      if (!pointInPolygon({ x: x2, y: y2 }, this.wallPath)) {
         return;
       }
       if (template.kind === "DESK") {
-        const desk = {
-          id: tempId,
-          name: sanitizeLabel(template.label),
-          deskTyp: template.deskTyp ?? "WORKSTATION",
-          x: x5,
-          y: y5,
-          breite: template.breite,
-          hoehe: template.hoehe
-        };
-        this.data.desks.push(desk);
+        this.data.desks.push(this.deskRenderer.createFromTemplate(template, { x: x2, y: y2 }, tempId));
       } else if (template.kind === "ASSET") {
-        const targetDesk = this.data.desks.find(
-          (d) => x5 >= d.x && x5 <= d.x + d.breite && y5 >= d.y && y5 <= d.y + d.hoehe
-        );
-        const asset = {
-          id: tempId,
-          hardwareId: template.hardwareId ?? 0,
-          label: sanitizeLabel(template.label),
-          breite: template.breite,
-          hoehe: template.hoehe,
-          x: targetDesk ? x5 - targetDesk.x : x5,
-          y: targetDesk ? y5 - targetDesk.y : y5,
-          deskId: targetDesk ? targetDesk.id : null
-        };
-        this.data.assets.push(asset);
+        this.data.assets.push(this.assetRenderer.createFromTemplate(template, { x: x2, y: y2 }, tempId));
       } else if (template.kind === "SOCKET") {
-        const socket = {
-          id: tempId,
-          name: sanitizeLabel(template.label),
-          socketTyp: template.socketTyp ?? "NETZWERK",
-          x: x5,
-          y: y5
-        };
-        this.data.sockets.push(socket);
+        this.data.sockets.push(this.socketRenderer.createFromTemplate(template, { x: x2, y: y2 }, tempId));
       }
       this.render();
     }
-    /** Tür/Fenster dürfen nur auf einer Wand landen; werden auf den nächsten Wandpunkt projiziert und daran ausgerichtet. */
-    dropFeatureOnWall(template, dropPos, tempId) {
-      const nearest = nearestWallSegment(dropPos, this.wallPath);
-      if (!nearest || nearest.distance > this.featureSnapThresholdUnit) return;
-      const feature = {
-        id: tempId,
-        typ: template.featureTyp ?? "TUER",
-        x: 0,
-        y: 0,
-        breite: template.breite
-      };
-      this.snapFeatureToWall(feature, nearest.point, nearest.angleDeg);
-      this.data.features.push(feature);
-      this.render();
-    }
-    // --- Item-abhängiges Kontextmenü (rechte Maustaste) --------------------------
+    // --- Item-based context menu (right-click) --------------------------
     attachContextMenu() {
       this.contextMenuHandler = (evt) => {
         const mouseEvt = evt;
@@ -6791,73 +7287,17 @@ var RoomPlan = (() => {
       this.draw.node.addEventListener("contextmenu", this.contextMenuHandler);
     }
     /**
-     * evt.preventDefault() wird NUR aufgerufen, wenn tatsächlich ein eigenes Menü gezeigt wird –
-     * trifft der Rechtsklick weder Handle/Entität noch eine nahe Wandkante, bleibt das native
-     * Browser-Kontextmenü verfügbar (statt es wie zuvor pauschal zu unterdrücken).
+     * Resolves the current context-menu hit and shows the result only when the click matches a known
+     * entity or wall target. Unknown clicks keep the browser's native context menu.
      */
     handleContextMenu(evt) {
-      const target = evt.target;
-      const entityEl = target.closest("[data-entity]");
-      if (entityEl) {
+      const resolved = this.contextMenuDispatcher.resolve(evt);
+      if (resolved) {
         evt.preventDefault();
-        const entityRaw = entityEl.getAttribute("data-entity");
-        if (!isValidEntityType(entityRaw)) {
-          console.error("Invalid entity type:", entityRaw);
-          return;
-        }
-        const entity = entityRaw;
-        const id = Number(entityEl.getAttribute("data-id"));
-        if (!Number.isFinite(id)) {
-          console.error("Invalid entity ID:", id);
-          return;
-        }
-        if (entity === "FEATURE") {
-          this.showContextMenu(evt.clientX, evt.clientY, this.buildFeatureMenuItems(id));
-        } else {
-          this.showContextMenu(evt.clientX, evt.clientY, [
-            { label: "L\xF6schen", onClick: () => this.deleteEntityAndRender(entity, id) }
-          ]);
-        }
-        return;
-      }
-      const p = this.toContentUnit(evt.clientX, evt.clientY);
-      const nearestVertex = nearestWallVertex(p, this.wallPath);
-      if (nearestVertex && nearestVertex.distance <= this.wallVertexThresholdUnit) {
-        evt.preventDefault();
-        const idx = nearestVertex.index;
-        this.showContextMenu(evt.clientX, evt.clientY, [
-          { label: "Ecke l\xF6schen", onClick: () => this.removeWallVertex(idx) }
-        ]);
-        return;
-      }
-      const nearest = nearestWallSegment(p, this.wallPath);
-      if (nearest && nearest.distance <= this.wallSplitThresholdUnit) {
-        evt.preventDefault();
-        this.showContextMenu(evt.clientX, evt.clientY, [
-          { label: "Wand trennen", onClick: () => this.splitWallAtPoint(p) }
-        ]);
+        this.showContextMenu(evt.clientX, evt.clientY, resolved);
         return;
       }
       this.closeContextMenu();
-    }
-    /** Menüeinträge für Tür/Fenster; Türen bekommen zusätzlich Anschlag-/Öffnungsrichtungs-Optionen. */
-    buildFeatureMenuItems(featureId) {
-      const f = this.data.features.find((ft) => ft.id === featureId);
-      const items = [
-        { label: "Entlang der Wand verschieben", onClick: () => this.realignFeatureToWall(featureId) }
-      ];
-      if (f?.typ === "TUER") {
-        const anschlag = f.anschlag ?? "LINKS";
-        const richtung = f.richtung ?? "INNEN";
-        items.push(
-          { label: `${anschlag === "LINKS" ? "\u25CF " : ""}Anschlag links`, onClick: () => this.setDoorAnschlag(featureId, "LINKS") },
-          { label: `${anschlag === "RECHTS" ? "\u25CF " : ""}Anschlag rechts`, onClick: () => this.setDoorAnschlag(featureId, "RECHTS") },
-          { label: `${richtung === "INNEN" ? "\u25CF " : ""}Innen \xF6ffnend`, onClick: () => this.setDoorRichtung(featureId, "INNEN") },
-          { label: `${richtung === "AUSSEN" ? "\u25CF " : ""}Au\xDFen \xF6ffnend`, onClick: () => this.setDoorRichtung(featureId, "AUSSEN") }
-        );
-      }
-      items.push({ label: "L\xF6schen", onClick: () => this.deleteEntityAndRender("FEATURE", featureId) });
-      return items;
     }
     deleteEntityAndRender(entity, id) {
       this.deleteEntity(entity, id);
@@ -6940,7 +7380,21 @@ var RoomPlan = (() => {
       this.wallPath = normalizeWallPath(
         data2.wallPath && data2.wallPath.length >= 3 ? data2.wallPath : rectPath(data2.raumBreite, data2.raumLaenge)
       );
+      this.assetRenderer.clearLookupCache();
       this.render();
+    }
+    /**
+     * Fragt per onAssetLookup-Callback (Host-Implementierung, z.B. via apex.server.process) Daten
+     * zu einem Asset-Typ ab und cacht das Ergebnis für den nächsten Drop eines ASSET-Palette-Items
+     * mit passendem PaletteTemplate.assetTyp (siehe AssetRenderer.createFromTemplate()).
+     * Lookup-Trigger (diese Methode) und Drop sind bewusst getrennte Events – der Host ruft diese
+     * Methode z.B. von einem eigenen Klick-Handler auf dem Palette-Button aus auf, unabhängig vom
+     * dragstart-Handler. Dünner Delegate auf AssetRenderer (siehe dort für die Implementierung),
+     * bleibt hier als öffentliche API bestehen, damit Host-Code (`renderer.lookupAssetTemplate(...)`)
+     * unverändert weiterfunktioniert.
+     */
+    async lookupAssetTemplate(assetTyp) {
+      return this.assetRenderer.lookupAssetTemplate(assetTyp, this.data.locationId);
     }
     /** Vollständiger Snapshot des aktuellen Stands (Wände + Möbel) zum Speichern. */
     getData() {
@@ -6957,3 +7411,17 @@ var RoomPlan = (() => {
   };
   return __toCommonJS(index_exports);
 })();
+/*! Bundled license information:
+
+@svgdotjs/svg.js/dist/svg.esm.js:
+  (*!
+  * @svgdotjs/svg.js - A lightweight library for manipulating and animating SVG.
+  * @version 3.2.8
+  * https://svgjs.dev/
+  *
+  * @copyright Wout Fierens <wout@mick-wout.com>
+  * @license MIT
+  *
+  * BUILT: 2026-08-04T07:47:41.000Z
+  *)
+*/

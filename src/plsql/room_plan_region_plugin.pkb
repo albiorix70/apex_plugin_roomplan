@@ -90,10 +90,10 @@ create or replace package body room_plan_region_plugin as
       sys.htp.p('    <div class="a-Toolbar rp-zoom-controls">');
       sys.htp.p('      <div class="a-Toolbar-body">');
       sys.htp.p('        <div class="a-Toolbar-group">');
-      sys.htp.p('          <button type="button" class="t-Button t-Button--small" data-action="zoom-out">-</button>');
-      sys.htp.p('          <button type="button" class="t-Button t-Button--small" data-action="zoom-reset">100%</button>');
-      sys.htp.p('          <button type="button" class="t-Button t-Button--small" data-action="zoom-in">+</button>');
-      sys.htp.p('          <button type="button" class="t-Button t-Button--small" data-action="view-reset">Ansicht zurucksetzen</button>');
+      sys.htp.p('          <button type="button" class="t-Button t-Button--small" data-action="zoom-out" aria-label="Verkleinern" title="Verkleinern">-</button>');
+      sys.htp.p('          <button type="button" class="t-Button t-Button--small" data-action="zoom-reset" aria-label="Zoom zuruecksetzen" title="Zoom zuruecksetzen">100%</button>');
+      sys.htp.p('          <button type="button" class="t-Button t-Button--small" data-action="zoom-in" aria-label="Vergroessern" title="Vergroessern">+</button>');
+      sys.htp.p('          <button type="button" class="t-Button t-Button--small" data-action="view-reset" aria-label="Ansicht zuruecksetzen" title="Ansicht zuruecksetzen">Ansicht zuruecksetzen</button>');
       sys.htp.p('          <button type="button" class="t-Button t-Button--small" data-action="fit">An Fenster anpassen</button>');
       sys.htp.p('          <button type="button" class="t-Button t-Button--small t-Button--hot" data-action="save">Speichern</button>');
       sys.htp.p('        </div>');
@@ -135,7 +135,6 @@ create or replace package body room_plan_region_plugin as
       l_ajax_identifier varchar2(4000);
       l_config_json     clob;
       l_onload_js       clob;
-      l_file_prefix     varchar2(4000);
    begin
       if apex_application.g_debug then
          apex_plugin_util.debug_region(
@@ -154,10 +153,6 @@ create or replace package body room_plan_region_plugin as
       );
       l_container_id := l_static_id || '_wrapper';
       l_canvas_id := l_static_id || '_room_plan';
-      l_file_prefix := coalesce(
-         p_region.attribute_03,
-         p_plugin.file_prefix
-      );
       print_markup(
          p_container_id => l_container_id,
          p_canvas_id    => l_canvas_id
